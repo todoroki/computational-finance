@@ -1,0 +1,57 @@
+services:
+  # --- Backend (Django) ---
+  backend:
+    build: ./backend
+    # まだmanage.pyがないので、初回はコメントアウトするか、commandを上書きして起動させないようにするテクニックもありますが、
+    # 今回は run --rm で作るアプローチなので、このままでOK（ただし初回up時はエラーで落ちます）
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      - DEBUG=1
+      - SECRET_KEY=dev_secret_key
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],backend
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=django      # 修正: 下のPOSTGRES_DBと同じにする
+      - DB_USER=django      # 修正: 下のPOSTGRES_USERと同じにする
+      - DB_PASSWORD=django  # 修正: 下のPOSTGRES_PASSWORDと同じにする
+      - DB_HOST=db
+
+  # --- Database (PostgreSQL) ---
+  db:
+    image: postgres:17.7
+    restart: always
+    environment:
+      - POSTGRES_USER=django
+      - POSTGRES_PASSWORD=django
+      - POSTGRES_DB=django
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U django -d django"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # # --- Frontend (Next.js) ---
+  # frontend:
+  #   build: ./frontend
+  #   command: npm run dev
+  #   volumes:
+  #     - ./frontend:/app
+  #     - /app/node_modules
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - NEXT_PUBLIC_API_URL=http://localhost:8000/graphql
+  #   depends_on:
+  #     - backend
+
+volumes:
+  postgres_data:
