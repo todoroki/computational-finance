@@ -42,16 +42,16 @@ services:
   # --- Frontend (Next.js) ---
   frontend:
     build: ./frontend
-    command: npm run dev
+    # インストール前は npm run dev がないので、起動時はとりあえず sh にしておく（または command を書かない）
+    # command: npm run dev 
     volumes:
       - ./frontend:/app
-      - /app/node_modules
+      # - /app/node_modules  # コンテナ内の node_modules を守るために必須
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000/graphql
     depends_on:
       - backend
-
 volumes:
   postgres_data:
