@@ -1,6 +1,30 @@
+# Python / Virtualenv
 __pycache__
+*.py[cod]
+*$py.class
+venv
+.venv  # <--- これが重要！
+
+# Environment variables
+.env
+
+# Django
+db.sqlite3
+local_settings.py
+static/
+media/
+
+# Git
+.git
+.gitignore
+
+# Docker
+docker-compose.yml
+Dockerfile
+
+# Node / Next.js
 node_modules
 .next
-.git
-.env
-venv
+frontend/out
+frontend/build
+frontend/node_modules # フロントエンドの中も念の為
