@@ -3,7 +3,6 @@ from typing import List
 
 import strawberry
 
-# from strawberry import auto
 from .models import AnalysisResult, FinancialStatement, Stock
 
 
@@ -14,7 +13,15 @@ class FinancialStatementType:
     revenue: float | None
     operating_income: float | None
     net_income: float | None
-    # 必要なフィールドをここに追加
+
+    # ▼▼▼ これらを追加してください ▼▼▼
+    operating_cf: float | None
+    investing_cf: float | None
+    financing_cf: float | None
+    total_assets: float | None
+    net_assets: float | None
+    period_end: strawberry.auto  # 日付も使うなら追加
+    # ▲▲▲ ここまで ▲▲▲
 
 
 @strawberry.django.type(AnalysisResult)
@@ -35,8 +42,5 @@ class StockType:
     sector: str | None
     market: str | None
     description: str | None
-
-    # リレーション（逆参照）
-    # Stock 1つに対して、複数の決算(financials)と分析(analysis_results)がある
     financials: List[FinancialStatementType]
     analysis_results: List[AnalysisResultType]

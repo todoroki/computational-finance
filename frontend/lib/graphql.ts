@@ -1,20 +1,29 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://backend:8000/graphql";
+// frontend/lib/graphql.ts
+import { TypedDocumentNode } from "@graphql-typed-document-node/core";
+import { print } from "graphql";
 
-// <T>: レスポンスデータの型 (Response Type)
-// <V>: 変数の型 (Variables Type) - デフォルトは「キーが文字列のオブジェクト」
-export async function fetchGraphQL<T = any, V = Record<string, unknown>>(
-    query: string,
-    variables?: V
-): Promise<T> {
+// ▼ ここが修正ポイント！
+// typeof window === "undefined" は「サーバー側で実行中」という意味です。
+// サーバー側ならDocker内部通信用の "http://backend:8000/graphql" を使い、
+// ブラウザ側なら環境変数の "http://localhost:8000/graphql" を使います。
+const API_URL = typeof window === "undefined"
+    ? "http://backend:8000/graphql"
+    : process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/graphql";
+
+export async function fetchGraphQL<TResult, TVariables>(
+    document: TypedDocumentNode<TResult, TVariables>,
+    variables?: TVariables
+): Promise<TResult> {
     const res = await fetch(API_URL, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({
-            query,
+            query: print(document),
             variables: variables || {},
         }),
+        // 開発中はキャッシュしない
         cache: "no-store",
     });
 

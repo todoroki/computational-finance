@@ -1,62 +1,14 @@
+// frontend/app/page.tsx
 import { fetchGraphQL } from "@/lib/graphql";
+// ▼ 自動生成されたクエリ定義（ドキュメント）をインポート！
+import { GetStocksDocument, isStockType } from "@/lib/gql/graphql";
 
-// ▼ クエリ: 最新のスコアと、過去の財務推移を取得
-const GET_STOCKS_QUERY = `
-  query {
-    stocks {
-      code
-      name
-      sector
-      # 分析結果（最新の1件だけ）
-      analysisResults {
-        fScore
-        accrualsRatio
-        aiSummary
-        isGoodBuy
-        stockPrice
-      }
-      # 過去の財務データ（時系列）
-      financials {
-        fiscalYear
-        revenue
-        netIncome
-        operatingCf
-      }
-    }
-  }
-`;
-
-type Financial = {
-  fiscalYear: number;
-  revenue: number;
-  netIncome: number;
-  operatingCf: number;
-};
-
-type Analysis = {
-  fScore: number;
-  accrualsRatio: number;
-  aiSummary: string;
-  isGoodBuy: boolean;
-  stockPrice: number;
-};
-
-type Stock = {
-  code: string;
-  name: string;
-  sector: string;
-  financials: Financial[];
-  analysisResults: Analysis[];
-};
+// ❌ もう手動の型定義（type Stock = ...）は不要です！全部削除！
 
 export default async function Home() {
-  let stocks: Stock[] = [];
-  try {
-    const data = await fetchGraphQL(GET_STOCKS_QUERY);
-    stocks = data.stocks;
-  } catch (error) {
-    console.error("データ取得エラー:", error);
-  }
+  // ▼ GetStocksDocument を渡すと、戻り値の型は自動的に GetStocksQuery になります
+  const data = await fetchGraphQL(GetStocksDocument);
+  const stocks = data.stocks;
 
   return (
     <div className="min-h-screen bg-base-200 p-8">
@@ -71,14 +23,20 @@ export default async function Home() {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         {stocks.map((stock) => {
+          if (!isStockType(stock)) return null;
+          // stock は自動生成された型なので、.analysisResults などが補完されるはずです
           const analysis = stock.analysisResults[0];
-          // 年度順にソート
-          const sortedFinancials = [...stock.financials].sort(
+
+          // GraphQLの配列は「nullかも」という型になることがあるので、?? [] で安全にするのが作法
+          const financials = stock.financials ?? [];
+
+          // 古い順にソート
+          const sortedFinancials = [...financials].sort(
             (a, b) => a.fiscalYear - b.fiscalYear
           );
-          // グラフの最大値計算
+
           const maxRevenue = Math.max(
-            ...sortedFinancials.map((f) => f.revenue)
+            ...sortedFinancials.map((f) => f.revenue ?? 0)
           );
 
           return (
@@ -175,12 +133,14 @@ export default async function Home() {
                           <div
                             className="h-full bg-primary opacity-80"
                             style={{
-                              width: `${(f.revenue / maxRevenue) * 100}%`,
+                              width: `${
+                                ((f.revenue ?? 0) / maxRevenue) * 100
+                              }%`,
                             }}
                           ></div>
                         </div>
                         <span className="w-20 text-right font-mono">
-                          {(f.revenue / 100000000).toLocaleString()}億円
+                          {((f.revenue ?? 0) / 100000000).toLocaleString()}億円
                         </span>
                       </div>
                     ))}

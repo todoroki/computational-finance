@@ -1,0 +1,26 @@
+query GetStocks {
+  stocks {
+    # TypeGuard用に __typename は必須（自動付与される場合もあるが明示推奨）
+    __typename
+    code
+    name
+    sector
+
+    analysisResults {
+      __typename
+      fScore
+      accrualsRatio
+      aiSummary
+      isGoodBuy
+      stockPrice
+    }
+
+    financials {
+      __typename
+      fiscalYear
+      revenue
+      netIncome
+      operatingCf
+    }
+  }
+}
