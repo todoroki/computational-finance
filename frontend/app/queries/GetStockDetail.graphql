@@ -1,0 +1,33 @@
+query GetStockDetail($code: String!) {
+  stock(code: $code) {
+    code
+    name
+    sector
+    description
+    market
+
+    analysisResults {
+      date
+      stockPrice
+      marketCap
+      fScore
+      accrualsRatio
+      aiSummary
+      isGoodBuy
+    }
+
+    financials {
+      fiscalYear
+      quarter
+      revenue
+      operatingIncome
+      netIncome
+      operatingCf
+      investingCf
+      financingCf
+      totalAssets
+      netAssets
+      periodEnd
+    }
+  }
+}

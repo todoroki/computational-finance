@@ -2,6 +2,7 @@
 import { fetchGraphQL } from "@/lib/graphql";
 // ▼ 自動生成されたクエリ定義（ドキュメント）をインポート！
 import { GetStocksDocument, isStockType } from "@/lib/gql/graphql";
+import Link from "next/link"; // 追加
 
 // ❌ もう手動の型定義（type Stock = ...）は不要です！全部削除！
 
@@ -40,9 +41,10 @@ export default async function Home() {
           );
 
           return (
-            <div
+            <Link
+              href={`/stocks/${stock.code}`}
               key={stock.code}
-              className="card bg-base-100 shadow-xl border-l-4 border-primary"
+              className="card bg-base-100 shadow-xl border-l-4 border-primary hover:shadow-2xl transition-all cursor-pointer"
             >
               <div className="card-body">
                 {/* ヘッダー */}
@@ -150,7 +152,7 @@ export default async function Home() {
                   </div>
                 </div>
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>

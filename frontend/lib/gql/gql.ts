@@ -14,9 +14,11 @@ import { TypedDocumentNode as DocumentNode } from '@graphql-typed-document-node/
  * Learn more about it here: https://the-guild.dev/graphql/codegen/plugins/presets/preset-client#reducing-bundle-size
  */
 type Documents = {
+    "query GetStockDetail($code: String!) {\n  stock(code: $code) {\n    code\n    name\n    sector\n    description\n    market\n    analysisResults {\n      date\n      stockPrice\n      marketCap\n      fScore\n      accrualsRatio\n      aiSummary\n      isGoodBuy\n    }\n    financials {\n      fiscalYear\n      quarter\n      revenue\n      operatingIncome\n      netIncome\n      operatingCf\n      investingCf\n      financingCf\n      totalAssets\n      netAssets\n      periodEnd\n    }\n  }\n}": typeof types.GetStockDetailDocument,
     "query GetStocks {\n  stocks {\n    __typename\n    code\n    name\n    sector\n    analysisResults {\n      __typename\n      fScore\n      accrualsRatio\n      aiSummary\n      isGoodBuy\n      stockPrice\n    }\n    financials {\n      __typename\n      fiscalYear\n      revenue\n      netIncome\n      operatingCf\n    }\n  }\n}": typeof types.GetStocksDocument,
 };
 const documents: Documents = {
+    "query GetStockDetail($code: String!) {\n  stock(code: $code) {\n    code\n    name\n    sector\n    description\n    market\n    analysisResults {\n      date\n      stockPrice\n      marketCap\n      fScore\n      accrualsRatio\n      aiSummary\n      isGoodBuy\n    }\n    financials {\n      fiscalYear\n      quarter\n      revenue\n      operatingIncome\n      netIncome\n      operatingCf\n      investingCf\n      financingCf\n      totalAssets\n      netAssets\n      periodEnd\n    }\n  }\n}": types.GetStockDetailDocument,
     "query GetStocks {\n  stocks {\n    __typename\n    code\n    name\n    sector\n    analysisResults {\n      __typename\n      fScore\n      accrualsRatio\n      aiSummary\n      isGoodBuy\n      stockPrice\n    }\n    financials {\n      __typename\n      fiscalYear\n      revenue\n      netIncome\n      operatingCf\n    }\n  }\n}": types.GetStocksDocument,
 };
 
@@ -34,6 +36,10 @@ const documents: Documents = {
  */
 export function graphql(source: string): unknown;
 
+/**
+ * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function graphql(source: "query GetStockDetail($code: String!) {\n  stock(code: $code) {\n    code\n    name\n    sector\n    description\n    market\n    analysisResults {\n      date\n      stockPrice\n      marketCap\n      fScore\n      accrualsRatio\n      aiSummary\n      isGoodBuy\n    }\n    financials {\n      fiscalYear\n      quarter\n      revenue\n      operatingIncome\n      netIncome\n      operatingCf\n      investingCf\n      financingCf\n      totalAssets\n      netAssets\n      periodEnd\n    }\n  }\n}"): (typeof documents)["query GetStockDetail($code: String!) {\n  stock(code: $code) {\n    code\n    name\n    sector\n    description\n    market\n    analysisResults {\n      date\n      stockPrice\n      marketCap\n      fScore\n      accrualsRatio\n      aiSummary\n      isGoodBuy\n    }\n    financials {\n      fiscalYear\n      quarter\n      revenue\n      operatingIncome\n      netIncome\n      operatingCf\n      investingCf\n      financingCf\n      totalAssets\n      netAssets\n      periodEnd\n    }\n  }\n}"];
 /**
  * The graphql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
