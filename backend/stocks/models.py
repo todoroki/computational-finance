@@ -25,7 +25,7 @@ class FinancialStatement(models.Model):
     """
     【データ倉庫】
     決算データ（PL/BS/CF）の生数値を時系列で保存する。
-    EDINETやyfinanceから取得した値をそのまま突っ込む場所。
+    Analysisのための原材料。
     """
 
     PERIOD_CHOICES = (
@@ -46,7 +46,7 @@ class FinancialStatement(models.Model):
     )
     period_end = models.DateField("決算期末日", null=True, blank=True)
 
-    # --- PL (損益計算書) ---
+    # === PL (損益計算書) ===
     revenue = models.DecimalField("売上高", max_digits=20, decimal_places=0, null=True)
     operating_income = models.DecimalField(
         "営業利益", max_digits=20, decimal_places=0, null=True
@@ -55,21 +55,52 @@ class FinancialStatement(models.Model):
         "当期純利益", max_digits=20, decimal_places=0, null=True
     )
 
-    # --- BS (貸借対照表) ---
+    # New for Analytics
+    ebit = models.DecimalField(
+        "EBIT",
+        max_digits=20,
+        decimal_places=0,
+        null=True,
+        help_text="利払前・税引前利益",
+    )
+    interest_expense = models.DecimalField(
+        "支払利息", max_digits=20, decimal_places=0, null=True
+    )
+    depreciation = models.DecimalField(
+        "減価償却費", max_digits=20, decimal_places=0, null=True
+    )
+
+    # === BS (貸借対照表) ===
     total_assets = models.DecimalField(
         "総資産", max_digits=20, decimal_places=0, null=True
     )
-    net_assets = models.DecimalField(
-        "純資産", max_digits=20, decimal_places=0, null=True
+    total_equity = models.DecimalField(
+        "純資産(株主資本)",
+        max_digits=20,
+        decimal_places=0,
+        null=True,
+        help_text="旧net_assets",
     )
+
     current_assets = models.DecimalField(
         "流動資産", max_digits=20, decimal_places=0, null=True
     )
     current_liabilities = models.DecimalField(
         "流動負債", max_digits=20, decimal_places=0, null=True
     )
+    long_term_debt = models.DecimalField(
+        "長期負債", max_digits=20, decimal_places=0, null=True
+    )
 
-    # --- CF (キャッシュフロー計算書) ---
+    # New for Analytics
+    inventory = models.DecimalField(
+        "棚卸資産(在庫)", max_digits=20, decimal_places=0, null=True
+    )
+    retained_earnings = models.DecimalField(
+        "利益剰余金", max_digits=20, decimal_places=0, null=True
+    )
+
+    # === CF (キャッシュフロー計算書) ===
     operating_cf = models.DecimalField(
         "営業CF", max_digits=20, decimal_places=0, null=True
     )
@@ -78,6 +109,11 @@ class FinancialStatement(models.Model):
     )
     financing_cf = models.DecimalField(
         "財務CF", max_digits=20, decimal_places=0, null=True
+    )
+
+    # New for Analytics
+    capex = models.DecimalField(
+        "設備投資(CapEx)", max_digits=20, decimal_places=0, null=True
     )
 
     class Meta:
@@ -92,7 +128,7 @@ class FinancialStatement(models.Model):
 class AnalysisResult(models.Model):
     """
     【分析結果】
-    FinancialStatementを元に計算されたスコア。
+    FinancialStatementを元に計算された機関投資家級スコア。
     ロジックが変わったら再計算して上書きする。
     """
 
@@ -102,12 +138,8 @@ class AnalysisResult(models.Model):
 
     # どの時点の分析か
     date = models.DateField("分析日", auto_now_add=True)
-    financial_statement = models.ForeignKey(
-        FinancialStatement,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        help_text="根拠となった決算データ",
+    financial_statement = models.OneToOneField(  # OneToOneに変更(1決算につき1分析)
+        FinancialStatement, on_delete=models.CASCADE, related_name="analysis_result"
     )
 
     # --- 価格指標 (その時点の) ---
@@ -118,19 +150,47 @@ class AnalysisResult(models.Model):
         "時価総額", max_digits=20, decimal_places=0, null=True
     )
 
-    # --- Layer 1: Structural (構造スコア) ---
-    f_score = models.IntegerField("Piotroski F-Score", null=True, help_text="0-9点")
-    accruals_ratio = models.FloatField(
-        "Accruals Ratio", null=True, help_text="低いほうが良い"
+    # ==========================================
+    # 🧱 Safety & Risk (安全装置)
+    # ==========================================
+    z_score = models.FloatField(
+        "Altman Z-Score", null=True, help_text="倒産リスク (3.0以上で安全)"
     )
 
-    # --- Layer 2: Cyclical (サイクル) ---
-    # ΔNOAなどは「前年との比較」が必要なので、計算時に前年のFinancialStatementを参照して算出する
-    delta_noa = models.FloatField("ΔNOA", null=True, help_text="純営業資産の変化率")
+    # ==========================================
+    # 🔍 Quality (利益の質)
+    # ==========================================
+    f_score = models.IntegerField(
+        "Piotroski F-Score", null=True, help_text="0-9点 (7点以上で優秀)"
+    )
+    accruals_ratio = models.FloatField(
+        "Accruals Ratio", null=True, help_text="低いほうが良い (<0.05)"
+    )
 
-    # --- AIコメント ---
-    ai_summary = models.TextField("AI分析要約", blank=True)
+    # ==========================================
+    # 📈 Structure (構造的強さ)
+    # ==========================================
+    gross_profitability = models.FloatField(
+        "Gross Profitability", null=True, help_text="粗利/総資産 (0.33以上で優秀)"
+    )
+    roiic = models.FloatField("ROIIC", null=True, help_text="増分投下資本利益率")
+
+    # ==========================================
+    # 🔮 Expectation (期待値)
+    # ==========================================
+    implied_growth_rate = models.FloatField(
+        "逆算DCF成長率(%)", null=True, help_text="現在の株価が織り込む成長率"
+    )
+
+    # --- 総合判定 ---
+    status = models.CharField(
+        "判定ステータス",
+        max_length=20,
+        default="Hold",
+        help_text="Strong Buy, Sell etc",
+    )
     is_good_buy = models.BooleanField("買いシグナル", default=False)
+    ai_summary = models.TextField("AI分析要約", blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -139,4 +199,4 @@ class AnalysisResult(models.Model):
         get_latest_by = "created_at"
 
     def __str__(self):
-        return f"Analysis for {self.stock.code} at {self.date}"
+        return f"Analysis for {self.stock.code} ({self.status})"
