@@ -1,12 +1,12 @@
-# backend/stocks/management/commands/fetch_data.py
 import pandas as pd
 import yfinance as yf
 from django.core.management.base import BaseCommand
+from stocks.analytics import FinancialCalculator, FinancialMetricsInput
 from stocks.models import AnalysisResult, FinancialStatement, Stock
 
 
 class Command(BaseCommand):
-    help = "財務データを取得し、機関投資家級の指標（F-Score, Accruals）を計算する"
+    help = "財務データを取得し、機関投資家級の指標を計算して保存する"
 
     def add_arguments(self, parser):
         parser.add_argument("ticker", type=str, help="銘柄コード (例: 7203)")
@@ -15,9 +15,15 @@ class Command(BaseCommand):
         ticker_symbol = options["ticker"]
         yf_ticker = f"{ticker_symbol}.T"
 
-        self.stdout.write(f"Fetching and Analyzing {yf_ticker}...")
+        self.stdout.write(f"Fetching {yf_ticker}...")
         stock_data = yf.Ticker(yf_ticker)
-        info = stock_data.info
+
+        # 基本情報の取得
+        try:
+            info = stock_data.info
+        except Exception as e:
+            self.stderr.write(f"Error fetching info: {e}")
+            return
 
         # 1. Stock (銘柄マスタ) 保存
         stock, _ = Stock.objects.update_or_create(
@@ -30,53 +36,118 @@ class Command(BaseCommand):
             },
         )
 
-        # 2. 財務データ取得 & 整理
-        financials = stock_data.financials.T  # PL (転置して行を日付に)
-        bs = stock_data.balance_sheet.T  # BS
-        cf = stock_data.cashflow.T  # CF
+        # 2. 財務データ取得
+        # yfinanceのデータフレームは index=項目名, columns=日付 なので転置(.T)して扱いやすくする
+        financials = stock_data.financials.T
+        bs = stock_data.balance_sheet.T
+        cf = stock_data.cashflow.T
 
         # 全ての日付を統合してソート（古い順）
         all_dates = sorted(list(set(financials.index) | set(bs.index) | set(cf.index)))
-
         saved_statements = []
+
+        # --- Helper: 安全にデータを取得する関数 ---
+        def get_val(df, date, keys):
+            """
+            複数のキー候補から最初に見つかった値を返す。
+            yfinanceは項目名がコロコロ変わるため、複数の候補を用意するのが定石。
+            """
+            if date not in df.index:
+                return 0.0
+
+            # 1つのキー文字列が渡された場合リスト化
+            if isinstance(keys, str):
+                keys = [keys]
+
+            for k in keys:
+                if k in df.columns:
+                    val = df.loc[date, k]
+                    if pd.isna(val):
+                        return 0.0
+                    return float(val)
+            return 0.0
 
         # 日付ごとにデータを保存
         for date in all_dates:
             period_end = date.date()
             year = period_end.year
 
-            # データ取得ヘルパー
-            def get(df, key):
-                # 1. カラムや行がない場合
-                if date not in df.index or key not in df.columns:
-                    return 0  # または None
-
-                val = df.loc[date, key]
-
-                # 2. ここが修正ポイント！「NaN」だったら None/0 にする
-                if pd.isna(val):
-                    return 0  # 計算に使うなら 0 が安全。保存だけなら None でもOK
-
-                return val
-
-            # 値の抽出
-            revenue = get(financials, "Total Revenue")
-            op_income = get(financials, "Operating Income")
-            net_income = get(financials, "Net Income")
-            total_assets = get(bs, "Total Assets")
-            net_assets = get(bs, "Stockholders Equity") or get(
-                bs, "Total Equity Gross Minority Interest"
+            # === PL (損益計算書) ===
+            revenue = get_val(financials, date, ["Total Revenue", "Total Revenue"])
+            op_income = get_val(
+                financials, date, ["Operating Income", "Operating Profit"]
             )
-            current_assets = get(bs, "Current Assets")
-            current_liabilities = get(bs, "Current Liabilities")
-            long_term_debt = get(bs, "Long Term Debt")
-            op_cf = get(cf, "Operating Cash Flow")
-            inv_cf = get(cf, "Investing Cash Flow")
-            fin_cf = get(cf, "Financing Cash Flow")
+            net_income = get_val(financials, date, "Net Income")
+            ebit = get_val(
+                financials, date, ["EBIT", "Net Income From Continuing Ops"]
+            )  # EBITがない場合の簡易フォールバック
 
-            # 発行済株式数 (最新のものを使う簡易実装)
-            shares_outstanding = info.get("sharesOutstanding", 0)
+            # 支払利息: yfinanceでは "Interest Expense" (通常マイナス値)。
+            interest_expense = get_val(
+                financials, date, ["Interest Expense", "Interest Expense Non Operating"]
+            )
 
+            # 減価償却費: CFから取るのが確実だが、PLにもある場合がある
+            depreciation = get_val(
+                financials,
+                date,
+                [
+                    "Reconciled Depreciation",
+                    "Depreciation",
+                    "Depreciation And Amortization In Income Statement",
+                ],
+            )
+
+            # === BS (貸借対照表) ===
+            total_assets = get_val(bs, date, "Total Assets")
+            # 株主資本 (Total Equity)
+            total_equity = get_val(
+                bs,
+                date,
+                [
+                    "Stockholders Equity",
+                    "Total Equity Gross Minority Interest",
+                    "Total Equity",
+                ],
+            )
+
+            curr_assets = get_val(bs, date, "Current Assets")
+            curr_liab = get_val(bs, date, "Current Liabilities")
+
+            # 在庫
+            inventory = get_val(bs, date, ["Inventory", "Inventories"])
+            # 利益剰余金
+            retained_earnings = get_val(
+                bs, date, ["Retained Earnings", "Retained Earnings Accumulated Deficit"]
+            )
+            # 長期負債
+            long_term_debt = get_val(
+                bs,
+                date,
+                ["Long Term Debt", "Long Term Debt And Capital Lease Obligation"],
+            )
+
+            # === CF (キャッシュフロー) ===
+            op_cf = get_val(
+                cf,
+                date,
+                ["Operating Cash Flow", "Total Cash From Operating Activities"],
+            )
+            inv_cf = get_val(
+                cf,
+                date,
+                ["Investing Cash Flow", "Total Cashflows From Investing Activities"],
+            )
+            fin_cf = get_val(
+                cf,
+                date,
+                ["Financing Cash Flow", "Total Cash From Financing Activities"],
+            )
+
+            # 設備投資 (CapEx): 通常マイナス値
+            capex = get_val(cf, date, ["Capital Expenditure", "Capital Expenditures"])
+
+            # DB保存
             stmt, _ = FinancialStatement.objects.update_or_create(
                 stock=stock,
                 fiscal_year=year,
@@ -86,210 +157,144 @@ class Command(BaseCommand):
                     "revenue": revenue,
                     "operating_income": op_income,
                     "net_income": net_income,
+                    "ebit": ebit,
+                    "interest_expense": interest_expense,
+                    "depreciation": depreciation,
                     "total_assets": total_assets,
-                    "net_assets": net_assets,
-                    "current_assets": current_assets,
-                    "current_liabilities": current_liabilities,
+                    "total_equity": total_equity,  # Renamed from net_assets
+                    "current_assets": curr_assets,
+                    "current_liabilities": curr_liab,
+                    "inventory": inventory,
+                    "retained_earnings": retained_earnings,
+                    "long_term_debt": long_term_debt,
                     "operating_cf": op_cf,
                     "investing_cf": inv_cf,
                     "financing_cf": fin_cf,
+                    "capex": capex,
                 },
             )
-            # 計算用にメモリ上のオブジェクトにも値を持たせておく（DB保存だけだと後で計算しにくい）
-            stmt.shares_outstanding = shares_outstanding
-            stmt.long_term_debt = long_term_debt
             saved_statements.append(stmt)
 
         self.stdout.write(f"Saved {len(saved_statements)} years of financial data.")
 
-        # --- 3. Computational Logic (ここが心臓部) ---
-        # 最新年度とその前年度を使って指標を計算する
+        # --- 3. Computational Logic (Analytics呼び出し) ---
         if len(saved_statements) < 2:
-            self.stdout.write(
-                self.style.WARNING("データ不足で分析できません（最低2年分必要）")
-            )
+            self.stdout.write(self.style.WARNING("データ不足で分析スキップ"))
             return
 
-        latest = saved_statements[-1]  # 今年
-        prev = saved_statements[-2]  # 去年
-
-        # --- Piotroski F-Score (9点満点) の厳密計算 ---
-        score = 0
-        details = []
-
-        # 1. 収益性 (Profitability)
-        # ROAがプラスか？
-        roa = (latest.net_income / latest.total_assets) if latest.total_assets else 0
-        if latest.net_income > 0:
-            score += 1
-        if latest.operating_cf > 0:
-            score += 1
-        if roa > ((prev.net_income / prev.total_assets) if prev.total_assets else 0):
-            score += 1
-        if latest.operating_cf > latest.net_income:
-            score += 1  # 利益の質 (キャッシュが利益を上回るか)
-
-        # 2. 財務安全性 (Leverage, Liquidity, Source of Funds)
-        # レバレッジ (長期負債 / 総資産) が下がったか？
-        lev_latest = (
-            (latest.long_term_debt or 0) / latest.total_assets
-            if latest.total_assets
-            else 0
-        )
-        lev_prev = (
-            (prev.long_term_debt or 0) / prev.total_assets if prev.total_assets else 0
-        )
-        if lev_latest <= lev_prev:
-            score += 1
-
-        # 流動比率 (流動資産 / 流動負債) が上がったか？
-        curr_ratio_latest = (
-            (latest.current_assets / latest.current_liabilities)
-            if latest.current_liabilities
-            else 0
-        )
-        curr_ratio_prev = (
-            (prev.current_assets / prev.current_liabilities)
-            if prev.current_liabilities
-            else 0
-        )
-        if curr_ratio_latest > curr_ratio_prev:
-            score += 1
-
-        # 株式の希薄化がないか？ (今回は簡易的に発行済株式数で判定したいが、過去データがない場合もあるのでスキップまたは同値扱い)
-        # ここでは1点加えておく（保守的）
-        score += 1
-
-        # 3. 営業効率 (Operating Efficiency)
-        # 粗利益率 (Gross Margin) ※簡易的に (売上-営業費用)/売上 とするが、ここでは営業利益率で代用
-        margin_latest = (
-            latest.operating_income / latest.revenue if latest.revenue else 0
-        )
-        margin_prev = prev.operating_income / prev.revenue if prev.revenue else 0
-        if margin_latest > margin_prev:
-            score += 1
-
-        # 資産回転率 (Asset Turnover) = 売上 / 総資産
-        turnover_latest = (
-            latest.revenue / latest.total_assets if latest.total_assets else 0
-        )
-        turnover_prev = prev.revenue / prev.total_assets if prev.total_assets else 0
-        if turnover_latest > turnover_prev:
-            score += 1
-
-        # --- Sloan Ratio (Accruals) ---
-        # (純利益 - 営業CF) / 総資産
-        # プラスが大きいほど「利益の質が悪い（現金が入ってない）」
-        # マイナス（または0に近い）ほど「健全」
-        accruals_ratio = 0.0
-        if latest.total_assets:
-            accruals_ratio = (
-                float(latest.net_income) - float(latest.operating_cf)
-            ) / float(latest.total_assets)
-
-        # --- 判定ロジック ---
-        # Fスコアが高く、アクルーアルが低い（マイナス）のが最強
-        is_good_buy = False
-        ai_summary = ""
-
-        if score >= 7 and accruals_ratio < 0.05:
-            is_good_buy = True
-            ai_summary = f"【Strong Buy】財務健全性抜群(Score:{score})。利益の質も高い(Accruals:{accruals_ratio:.2%})。"
-        elif score <= 3:
-            ai_summary = f"【Sell】財務が悪化しており危険(Score:{score})。"
-        else:
-            ai_summary = f"【Hold】特筆すべき強みなし(Score:{score})。"
-
-        # --- 3. Computational Logic Evolution ---
         latest = saved_statements[-1]
-        
-        # ==========================================
-        # 1. Gross Profitability (Novy-Marx)
-        # 粗利 / 総資産
-        # クオリティ投資の決定版。0.33以上なら優秀とされることが多い。
-        # ==========================================
-        gross_profit = (latest.revenue or 0) - (latest.revenue - latest.operating_income) # 簡易計算(販管費無視)またはyfinanceからGross Profit取れるならそっち
-        # yfinanceのfinancialsには "Gross Profit" があるので、それを使うのがベスト
-        # ここでは簡易的に revenue - cost_of_revenue を想定
-        
-        # ※ データ取得部で "Gross Profit" を取ってくるように修正が必要ですが
-        # 一旦、既存データ(Operating Income)で代用するならこうなります（精度は落ちます）
-        # 本来: Gross Profit / Total Assets
-        gross_profitability = 0
-        if latest.total_assets and latest.total_assets > 0:
-             # 注: 厳密には Gross Profit ですが、Operating Income で代用しても相関は高い
-             # ここでは簡易実装として Operating Income ベースの ROA に近い形にします
-             # 本気でやるなら yfinance の "Gross Profit" を取得項目に追加してください
-            gross_profitability = (latest.operating_income or 0) / latest.total_assets
+        prev = saved_statements[-2]
 
-        # ==========================================
-        # 2. Market-Implied Growth Rate (逆算DCF)
-        # 「今の株価を正当化するには、今後永久に何%成長が必要か？」
-        # 公式: Price = FCF / (WACC - g)
-        # 変形: g = WACC - (FCF / Price)
-        # ==========================================
-        
-        current_price = info.get("currentPrice", 0)
-        market_cap = info.get("marketCap", 0)
-        
-        # フリーキャッシュフロー (直近)
-        fcf = (latest.operating_cf or 0) + (latest.investing_cf or 0)
-        
-        implied_growth_rate = None
-        
-        # WACC (加重平均資本コスト) は本来計算が必要だが、固定値(例: 8%)や
-        # "ベータ値" から簡易推定する。
-        # CAPM: Cost of Equity = RiskFree(1%) + Beta * RiskPremium(6%)
-        beta = info.get("beta", 1.0)
-        cost_of_equity = 0.01 + (beta * 0.06)
-        
-        # 簡易WACC (負債コスト無視で株主資本コストを使う簡易版)
-        wacc = cost_of_equity 
+        # Analytics用の入力データ作成
+        # ※ latest.field が None の場合 0.0 に変換して渡す
+        def safe(val):
+            return val if val is not None else 0.0
 
-        if market_cap > 0 and fcf > 0:
-            # 企業価値(EV)ベースでやるのが正確だが、時価総額ベースで簡易計算
-            # g = WACC - (FCF / MarketCap)
-            # ※ FCF利回り (FCF/MarketCap) が WACCより高ければ、マイナス成長でも許容される
-            implied_growth_rate = wacc - (fcf / market_cap)
-            
-            # パーセント表示用に100倍
-            implied_growth_rate = implied_growth_rate * 100
+        metrics_input = FinancialMetricsInput(
+            # PL
+            revenue=safe(latest.revenue),
+            operating_income=safe(latest.operating_income),
+            net_income=safe(latest.net_income),
+            ebit=safe(latest.ebit),
+            interest_expense=safe(latest.interest_expense),
+            depreciation=safe(latest.depreciation),
+            # BS
+            total_assets=safe(latest.total_assets),
+            total_equity=safe(latest.total_equity),
+            current_assets=safe(latest.current_assets),
+            current_liabilities=safe(latest.current_liabilities),
+            inventory=safe(latest.inventory),
+            retained_earnings=safe(latest.retained_earnings),
+            long_term_debt=safe(latest.long_term_debt),
+            # CF
+            operating_cf=safe(latest.operating_cf),
+            investing_cf=safe(latest.investing_cf),
+            capex=safe(latest.capex),
+            # Market
+            stock_price=info.get("currentPrice", 0),
+            market_cap=info.get("marketCap", 0),
+            beta=info.get("beta", 1.0) or 1.0,
+            # Previous Year
+            prev_revenue=safe(prev.revenue),
+            prev_operating_income=safe(prev.operating_income),
+            prev_net_income=safe(prev.net_income),
+            prev_total_assets=safe(prev.total_assets),
+            prev_current_assets=safe(prev.current_assets),
+            prev_current_liabilities=safe(prev.current_liabilities),
+            prev_inventory=safe(prev.inventory),
+            prev_long_term_debt=safe(prev.long_term_debt),
+        )
 
-        # ==========================================
-        # 3. 判定ロジックのアップデート
-        # ==========================================
-        
-        ai_summary = ""
+        # === 計算実行 ===
+        # 1. Safety
+        f_score, f_reasons = FinancialCalculator.calculate_piotroski_f_score(
+            metrics_input
+        )
+        z_score = FinancialCalculator.calculate_altman_z_score(metrics_input)
+
+        # 2. Quality
+        accruals = FinancialCalculator.calculate_accruals_ratio(metrics_input)
+
+        # 3. Strength
+        gross_prof = FinancialCalculator.calculate_gross_profitability(metrics_input)
+        roiic = FinancialCalculator.calculate_roiic(metrics_input)
+
+        # 4. Expectation
+        implied_g = FinancialCalculator.calculate_implied_growth_rate(metrics_input)
+
+        # 判定ロジック
+        status = "Hold"
+        ai_summary_parts = []
         is_good_buy = False
-        
-        # 条件: Fスコア合格 かつ アクルーアル合格 かつ 期待成長率が現実的(例えば30%以下)
-        if score >= 6 and accruals_ratio < 0.05:
-            # さらに期待値チェック
-            if implied_growth_rate is not None:
-                if implied_growth_rate < 10: # 市場期待が10%成長未満なら「割安/現実的」
+
+        # Z-Score判定
+        if z_score is not None:
+            z_zone = FinancialCalculator.classify_altman_zone(z_score)
+            if z_zone == "distress":
+                status = "Sell"
+                ai_summary_parts.append(f"⚠️倒産警戒域(Z-Score:{z_score:.2f})")
+            elif z_zone == "grey":
+                ai_summary_parts.append(f"倒産リスク予備軍(Z-Score:{z_score:.2f})")
+
+        # F-Score & Accruals
+        if f_score >= 7 and accruals < 0.05:
+            if status != "Sell":
+                if implied_g is not None and implied_g < 10:
+                    status = "Strong Buy"
                     is_good_buy = True
-                    ai_summary = f"【Strong Buy】財務盤石(Score:{score})。市場期待成長率は{implied_growth_rate:.1f}%と現実的で、割安の可能性大。"
+                    ai_summary_parts.append(
+                        f"財務盤石(Score:{f_score})かつ割安(期待成長:{implied_g:.1f}%)"
+                    )
                 else:
-                    ai_summary = f"【Watch】財務は良いが、市場期待({implied_growth_rate:.1f}%)が高い。成長鈍化で急落リスクあり。"
-            else:
-                ai_summary = f"【Hold】FCF赤字のため評価不能。財務スコアは良好({score})。"
-        else:
-             ai_summary = f"【Sell】構造的な弱さが見られる(Score:{score})。"            
+                    status = "Watch"
+                    ai_summary_parts.append(
+                        f"優良企業だが期待値が高い(成長率:{implied_g:.1f}%)"
+                    )
+        elif f_score <= 3:
+            status = "Sell"
+            ai_summary_parts.append(f"財務体質が悪化中(Score:{f_score})")
+
+        ai_summary = "。".join(ai_summary_parts)
 
         # 保存
         AnalysisResult.objects.create(
             stock=stock,
             financial_statement=latest,
-            stock_price=info.get("currentPrice", 0),
-            market_cap=info.get("marketCap", 0),
-            f_score=score,
-            accruals_ratio=accruals_ratio,
+            stock_price=metrics_input.stock_price,
+            market_cap=metrics_input.market_cap,
+            f_score=f_score,
+            z_score=z_score,
+            accruals_ratio=accruals,
+            gross_profitability=gross_prof,
+            roiic=roiic,
+            implied_growth_rate=implied_g,
+            status=status,
             is_good_buy=is_good_buy,
             ai_summary=ai_summary,
         )
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Done. F-Score: {score}/9, Accruals: {accruals_ratio:.2%}"
+                f"Analyzed {stock.name}: Status={status}, GP={gross_prof:.2f}, Z={z_score if z_score else 'N/A'}"
             )
         )
