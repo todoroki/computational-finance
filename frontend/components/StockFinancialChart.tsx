@@ -18,8 +18,9 @@ type FinancialData = {
   revenue?: number | null;
   operatingIncome?: number | null;
   operatingCf?: number | null;
+  // netAssets?: number | null;  <-- これは削除または変更
+  totalEquity?: number | null; // <-- これを追加！
 };
-
 type Props = {
   data: FinancialData[];
 };
