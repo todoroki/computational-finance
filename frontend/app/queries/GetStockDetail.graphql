@@ -10,10 +10,23 @@ query GetStockDetail($code: String!) {
       date
       stockPrice
       marketCap
-      fScore
-      accrualsRatio
-      aiSummary
+
+      # === 这里的核心追加！ ===
+      # 総合判定
+      status
       isGoodBuy
+      aiSummary
+
+      # Lens 1: Safety & Quality (安全・質)
+      zScore # 倒産リスク
+      fScore # 財務健全性 
+      accrualsRatio # 利益の質
+      # Lens 2: Structure (構造)
+      grossProfitability # 稼ぐ力
+      roiic # 投資効率
+      # Lens 3: Expectation (期待)
+      impliedGrowthRate # 逆算DCF
+      # =======================
     }
 
     financials {
@@ -26,7 +39,7 @@ query GetStockDetail($code: String!) {
       investingCf
       financingCf
       totalAssets
-      netAssets
+      totalEquity # netAssetsから名前変わりました
       periodEnd
     }
   }
