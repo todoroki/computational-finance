@@ -1,160 +1,200 @@
-// frontend/app/page.tsx
+import Link from "next/link";
 import { fetchGraphQL } from "@/lib/graphql";
-// ▼ 自動生成されたクエリ定義（ドキュメント）をインポート！
-import { GetStocksDocument, isStockType } from "@/lib/gql/graphql";
-import Link from "next/link"; // 追加
+import { GetStocksDocument } from "@/lib/gql/graphql";
+// ▼ 生成された型をインポート
+import type { GetStocksQuery } from "@/lib/gql/graphql";
 
-// ❌ もう手動の型定義（type Stock = ...）は不要です！全部削除！
+// ▼ "stocks" 配列の中の「1つの要素」の型を自動抽出
+// (手動で interface を書くとメンテが大変になるので、こうするのがベストプラクティスです)
+type StockSummary = GetStocksQuery["stocks"][number];
 
-export default async function Home() {
-  // ▼ GetStocksDocument を渡すと、戻り値の型は自動的に GetStocksQuery になります
-  const data = await fetchGraphQL(GetStocksDocument);
-  const stocks = data.stocks;
+// 検索バーコンポーネント
+function SearchBar({ initialQuery }: { initialQuery?: string }) {
+  return (
+    <form className="join w-full max-w-2xl shadow-sm">
+      <input
+        name="q"
+        className="input input-bordered join-item w-full"
+        placeholder="銘柄コード または 企業名で検索 (例: 7203, トヨタ)..."
+        defaultValue={initialQuery}
+      />
+      <select name="status" className="select select-bordered join-item">
+        <option value="">全てのステータス</option>
+        <option value="Strong Buy">🚀 Strong Buy</option>
+        <option value="Watch">🧐 Watch</option>
+        <option value="Hold">✋ Hold</option>
+        <option value="Sell">⚠️ Sell</option>
+      </select>
+      <button type="submit" className="btn btn-primary join-item">
+        Search
+      </button>
+    </form>
+  );
+}
+
+// 銘柄カードコンポーネント
+// ▼ ここで any ではなく抽出した型を使う
+function StockCard({ stock }: { stock: StockSummary }) {
+  const analysis = stock.analysisResults?.[0];
+  const price = analysis?.stockPrice?.toLocaleString() ?? "---";
+
+  // ステータスの色分け
+  const badgeColor =
+    analysis?.status === "Strong Buy"
+      ? "badge-primary"
+      : analysis?.status === "Sell"
+        ? "badge-error"
+        : "badge-neutral";
 
   return (
-    <div className="min-h-screen bg-base-200 p-8">
-      <div className="prose mb-8">
-        <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
-          📈 Computational Finance
-        </h1>
-        <p className="font-bold text-gray-500">
-          機関投資家級の「時系列分析」を、個人投資家の手に。
-        </p>
-      </div>
+    <Link
+      href={`/stocks/${stock.code}`}
+      className="card bg-white shadow-sm hover:shadow-md transition-shadow border border-base-200 group"
+    >
+      <div className="card-body p-5">
+        <div className="flex justify-between items-start mb-2">
+          <div>
+            <span className="font-mono text-xs text-gray-400 font-bold">
+              {stock.code}
+            </span>
+            <h3 className="card-title text-lg group-hover:text-primary transition-colors">
+              {stock.name}
+            </h3>
+          </div>
+          <div className={`badge ${badgeColor} font-bold whitespace-nowrap`}>
+            {analysis?.status ?? "未分析"}
+          </div>
+        </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        {stocks.map((stock) => {
-          if (!isStockType(stock)) return null;
-          // stock は自動生成された型なので、.analysisResults などが補完されるはずです
-          const analysis = stock.analysisResults[0];
+        <div className="text-sm text-gray-500 mb-4">
+          {stock.sector} | {stock.market}
+        </div>
 
-          // GraphQLの配列は「nullかも」という型になることがあるので、?? [] で安全にするのが作法
-          const financials = stock.financials ?? [];
-
-          // 古い順にソート
-          const sortedFinancials = [...financials].sort(
-            (a, b) => a.fiscalYear - b.fiscalYear
-          );
-
-          const maxRevenue = Math.max(
-            ...sortedFinancials.map((f) => f.revenue ?? 0)
-          );
-
-          return (
-            <Link
-              href={`/stocks/${stock.code}`}
-              key={stock.code}
-              className="card bg-base-100 shadow-xl border-l-4 border-primary hover:shadow-2xl transition-all cursor-pointer"
-            >
-              <div className="card-body">
-                {/* ヘッダー */}
-                <div className="flex justify-between items-center mb-4">
-                  <div>
-                    <h2 className="card-title text-2xl">
-                      {stock.name}
-                      <span className="badge badge-ghost text-xs font-mono">
-                        {stock.code}
-                      </span>
-                    </h2>
-                    <p className="text-sm text-gray-500">{stock.sector}</p>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-3xl font-bold font-mono">
-                      ¥{analysis?.stockPrice?.toLocaleString() ?? "---"}
-                    </div>
-                    {analysis?.isGoodBuy && (
-                      <div className="badge badge-success gap-2 text-white font-bold">
-                        BUY SIGNAL
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 指標エリア */}
-                <div className="grid grid-cols-3 gap-4 mb-6">
-                  {/* F-Score */}
-                  <div className="stats shadow bg-base-200">
-                    <div className="stat place-items-center p-2">
-                      <div className="stat-title text-xs">
-                        Piotroski F-Score
-                      </div>
-                      <div
-                        className={`stat-value text-2xl ${
-                          (analysis?.fScore ?? 0) >= 7
-                            ? "text-success"
-                            : (analysis?.fScore ?? 0) <= 3
-                            ? "text-error"
-                            : "text-warning"
-                        }`}
-                      >
-                        {analysis?.fScore ?? "-"}
-                        <span className="text-sm text-gray-400">/9</span>
-                      </div>
-                      <div className="stat-desc text-xs">財務健全性</div>
-                    </div>
-                  </div>
-
-                  {/* Accruals */}
-                  <div className="stats shadow bg-base-200">
-                    <div className="stat place-items-center p-2">
-                      <div className="stat-title text-xs">Accruals Ratio</div>
-                      <div
-                        className={`stat-value text-xl ${
-                          (analysis?.accrualsRatio ?? 0) < 0
-                            ? "text-success"
-                            : "text-error"
-                        }`}
-                      >
-                        {analysis?.accrualsRatio?.toFixed(2) ?? "-"}
-                      </div>
-                      <div className="stat-desc text-xs">利益の質 (低=良)</div>
-                    </div>
-                  </div>
-
-                  {/* AIコメント */}
-                  <div className="col-span-1 bg-base-200 rounded-xl p-3 text-xs flex items-center">
-                    <p>{analysis?.aiSummary || "分析データ待ち"}</p>
-                  </div>
-                </div>
-
-                {/* 売上推移バーチャート */}
-                <div>
-                  <h3 className="text-sm font-bold mb-2 opacity-70">
-                    過去5年の売上推移 (Trend)
-                  </h3>
-                  <div className="space-y-2">
-                    {sortedFinancials.map((f) => (
-                      <div
-                        key={f.fiscalYear}
-                        className="flex items-center text-xs"
-                      >
-                        <span className="w-12 font-mono opacity-50">
-                          {f.fiscalYear}
-                        </span>
-                        <div className="flex-1 h-4 bg-base-200 rounded overflow-hidden relative">
-                          <div
-                            className="h-full bg-primary opacity-80"
-                            style={{
-                              width: `${
-                                ((f.revenue ?? 0) / maxRevenue) * 100
-                              }%`,
-                            }}
-                          ></div>
-                        </div>
-                        <span className="w-20 text-right font-mono">
-                          {((f.revenue ?? 0) / 100000000).toLocaleString()}億円
-                        </span>
-                      </div>
-                    ))}
-                    {sortedFinancials.length === 0 && (
-                      <p className="text-xs text-gray-400">データなし</p>
-                    )}
-                  </div>
-                </div>
+        {/* ミニスコアボード */}
+        {analysis ? (
+          <div className="grid grid-cols-3 gap-2 text-center bg-base-100 p-2 rounded-lg">
+            <div>
+              <div className="text-[10px] text-gray-400 uppercase">Z-Score</div>
+              <div
+                className={`font-bold text-sm ${
+                  (analysis.zScore ?? 0) < 1.8
+                    ? "text-red-500"
+                    : "text-gray-700"
+                }`}
+              >
+                {analysis.zScore?.toFixed(2) ?? "-"}
               </div>
-            </Link>
-          );
-        })}
+            </div>
+            <div>
+              <div className="text-[10px] text-gray-400 uppercase">
+                Gross Prof
+              </div>
+              <div
+                className={`font-bold text-sm ${
+                  (analysis.grossProfitability ?? 0) > 0.33
+                    ? "text-green-600"
+                    : "text-gray-700"
+                }`}
+              >
+                {analysis.grossProfitability
+                  ? `${(analysis.grossProfitability * 100).toFixed(0)}%`
+                  : "-"}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-gray-400 uppercase">
+                Exp. Growth
+              </div>
+              <div
+                className={`font-bold text-sm ${
+                  (analysis.impliedGrowthRate ?? 0) > 10
+                    ? "text-red-500"
+                    : "text-green-600"
+                }`}
+              >
+                {analysis.impliedGrowthRate
+                  ? `${analysis.impliedGrowthRate.toFixed(1)}%`
+                  : "-"}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-center py-3 text-gray-400 bg-base-100 rounded-lg">
+            データなし
+          </div>
+        )}
+
+        <div className="mt-4 flex justify-between items-end">
+          <div className="text-xs text-gray-400">Current Price</div>
+          <div className="text-xl font-mono font-bold">¥{price}</div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// メインページ
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; status?: string }>;
+}) {
+  const { q, status } = await searchParams;
+
+  // 検索実行
+  const data = await fetchGraphQL(GetStocksDocument, {
+    search: q || null,
+    status: status || null,
+  });
+
+  const stocks = data.stocks ?? [];
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6 lg:p-10">
+      <div className="max-w-7xl mx-auto space-y-10">
+        {/* ヘッダー & 検索エリア */}
+        <div className="text-center space-y-6 py-10">
+          <h1 className="text-5xl font-extrabold tracking-tight text-gray-900">
+            Stock <span className="text-primary">X-Ray</span>
+          </h1>
+          <p className="text-lg text-gray-500 max-w-2xl mx-auto">
+            機関投資家級の分析（Gross Profitability, Z-Score, 逆算DCF）で、
+            負けない投資判断を。
+          </p>
+
+          <div className="flex justify-center">
+            <SearchBar initialQuery={q} />
+          </div>
+        </div>
+
+        {/* 検索結果エリア */}
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-gray-700">
+              {q || status ? "Search Results" : "All Stocks"}
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                ({stocks.length} matches)
+              </span>
+            </h2>
+          </div>
+
+          {stocks.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {stocks.map((stock) => (
+                <StockCard key={stock.code} stock={stock} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-20 text-gray-400">
+              <p className="text-lg">
+                条件に一致する銘柄が見つかりませんでした。
+              </p>
+              <p className="text-sm mt-2">
+                別のキーワードを試すか、データを取得してください。
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

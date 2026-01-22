@@ -18,7 +18,6 @@ class Command(BaseCommand):
         self.stdout.write(f"Fetching {yf_ticker}...")
         stock_data = yf.Ticker(yf_ticker)
 
-        # 基本情報の取得
         try:
             info = stock_data.info
         except Exception as e:
@@ -37,28 +36,18 @@ class Command(BaseCommand):
         )
 
         # 2. 財務データ取得
-        # yfinanceのデータフレームは index=項目名, columns=日付 なので転置(.T)して扱いやすくする
         financials = stock_data.financials.T
         bs = stock_data.balance_sheet.T
         cf = stock_data.cashflow.T
 
-        # 全ての日付を統合してソート（古い順）
         all_dates = sorted(list(set(financials.index) | set(bs.index) | set(cf.index)))
         saved_statements = []
 
-        # --- Helper: 安全にデータを取得する関数 ---
         def get_val(df, date, keys):
-            """
-            複数のキー候補から最初に見つかった値を返す。
-            yfinanceは項目名がコロコロ変わるため、複数の候補を用意するのが定石。
-            """
             if date not in df.index:
                 return 0.0
-
-            # 1つのキー文字列が渡された場合リスト化
             if isinstance(keys, str):
                 keys = [keys]
-
             for k in keys:
                 if k in df.columns:
                     val = df.loc[date, k]
@@ -67,27 +56,31 @@ class Command(BaseCommand):
                     return float(val)
             return 0.0
 
-        # 日付ごとにデータを保存
         for date in all_dates:
             period_end = date.date()
             year = period_end.year
 
-            # === PL (損益計算書) ===
+            # === PL ===
             revenue = get_val(financials, date, ["Total Revenue", "Total Revenue"])
+
+            # 【修正】銀行対策: 営業利益がない場合は "Pretax Income" (税引前利益) 等で代用
+            # Ordinary Income (経常利益) があればベストだが、yfinanceだと Pretax が近いことが多い
             op_income = get_val(
-                financials, date, ["Operating Income", "Operating Profit"]
+                financials,
+                date,
+                ["Operating Income", "Operating Profit", "Pretax Income"],
             )
+
             net_income = get_val(financials, date, "Net Income")
             ebit = get_val(
-                financials, date, ["EBIT", "Net Income From Continuing Ops"]
-            )  # EBITがない場合の簡易フォールバック
+                financials,
+                date,
+                ["EBIT", "Net Income From Continuing Ops", "Pretax Income"],
+            )
 
-            # 支払利息: yfinanceでは "Interest Expense" (通常マイナス値)。
             interest_expense = get_val(
                 financials, date, ["Interest Expense", "Interest Expense Non Operating"]
             )
-
-            # 減価償却費: CFから取るのが確実だが、PLにもある場合がある
             depreciation = get_val(
                 financials,
                 date,
@@ -98,9 +91,8 @@ class Command(BaseCommand):
                 ],
             )
 
-            # === BS (貸借対照表) ===
+            # === BS ===
             total_assets = get_val(bs, date, "Total Assets")
-            # 株主資本 (Total Equity)
             total_equity = get_val(
                 bs,
                 date,
@@ -110,24 +102,19 @@ class Command(BaseCommand):
                     "Total Equity",
                 ],
             )
-
             curr_assets = get_val(bs, date, "Current Assets")
             curr_liab = get_val(bs, date, "Current Liabilities")
-
-            # 在庫
             inventory = get_val(bs, date, ["Inventory", "Inventories"])
-            # 利益剰余金
             retained_earnings = get_val(
                 bs, date, ["Retained Earnings", "Retained Earnings Accumulated Deficit"]
             )
-            # 長期負債
             long_term_debt = get_val(
                 bs,
                 date,
                 ["Long Term Debt", "Long Term Debt And Capital Lease Obligation"],
             )
 
-            # === CF (キャッシュフロー) ===
+            # === CF ===
             op_cf = get_val(
                 cf,
                 date,
@@ -143,11 +130,8 @@ class Command(BaseCommand):
                 date,
                 ["Financing Cash Flow", "Total Cash From Financing Activities"],
             )
-
-            # 設備投資 (CapEx): 通常マイナス値
             capex = get_val(cf, date, ["Capital Expenditure", "Capital Expenditures"])
 
-            # DB保存
             stmt, _ = FinancialStatement.objects.update_or_create(
                 stock=stock,
                 fiscal_year=year,
@@ -161,7 +145,7 @@ class Command(BaseCommand):
                     "interest_expense": interest_expense,
                     "depreciation": depreciation,
                     "total_assets": total_assets,
-                    "total_equity": total_equity,  # Renamed from net_assets
+                    "total_equity": total_equity,
                     "current_assets": curr_assets,
                     "current_liabilities": curr_liab,
                     "inventory": inventory,
@@ -177,7 +161,7 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Saved {len(saved_statements)} years of financial data.")
 
-        # --- 3. Computational Logic (Analytics呼び出し) ---
+        # --- Analysis ---
         if len(saved_statements) < 2:
             self.stdout.write(self.style.WARNING("データ不足で分析スキップ"))
             return
@@ -185,20 +169,16 @@ class Command(BaseCommand):
         latest = saved_statements[-1]
         prev = saved_statements[-2]
 
-        # Analytics用の入力データ作成
-        # ※ latest.field が None の場合 0.0 に変換して渡す
         def safe(val):
             return val if val is not None else 0.0
 
         metrics_input = FinancialMetricsInput(
-            # PL
             revenue=safe(latest.revenue),
             operating_income=safe(latest.operating_income),
             net_income=safe(latest.net_income),
             ebit=safe(latest.ebit),
             interest_expense=safe(latest.interest_expense),
             depreciation=safe(latest.depreciation),
-            # BS
             total_assets=safe(latest.total_assets),
             total_equity=safe(latest.total_equity),
             current_assets=safe(latest.current_assets),
@@ -206,15 +186,12 @@ class Command(BaseCommand):
             inventory=safe(latest.inventory),
             retained_earnings=safe(latest.retained_earnings),
             long_term_debt=safe(latest.long_term_debt),
-            # CF
             operating_cf=safe(latest.operating_cf),
             investing_cf=safe(latest.investing_cf),
             capex=safe(latest.capex),
-            # Market
             stock_price=info.get("currentPrice", 0),
             market_cap=info.get("marketCap", 0),
             beta=info.get("beta", 1.0) or 1.0,
-            # Previous Year
             prev_revenue=safe(prev.revenue),
             prev_operating_income=safe(prev.operating_income),
             prev_net_income=safe(prev.net_income),
@@ -225,72 +202,59 @@ class Command(BaseCommand):
             prev_long_term_debt=safe(prev.long_term_debt),
         )
 
-        # === 計算実行 ===
-        # 1. Safety
         f_score, f_reasons = FinancialCalculator.calculate_piotroski_f_score(
             metrics_input
         )
         z_score = FinancialCalculator.calculate_altman_z_score(metrics_input)
-
-        # 2. Quality
         accruals = FinancialCalculator.calculate_accruals_ratio(metrics_input)
-
-        # 3. Strength
         gross_prof = FinancialCalculator.calculate_gross_profitability(metrics_input)
         roiic = FinancialCalculator.calculate_roiic(metrics_input)
-
-        # 4. Expectation
         implied_g = FinancialCalculator.calculate_implied_growth_rate(metrics_input)
 
-        # 判定ロジック
         status = "Hold"
         ai_summary_parts = []
         is_good_buy = False
 
-        # Z-Score判定
         if z_score is not None:
             z_zone = FinancialCalculator.classify_altman_zone(z_score)
             if z_zone == "distress":
                 status = "Sell"
-                ai_summary_parts.append(f"⚠️倒産警戒域(Z-Score:{z_score:.2f})")
+                ai_summary_parts.append(f"⚠️倒産警戒域(Z:{z_score:.2f})")
             elif z_zone == "grey":
-                ai_summary_parts.append(f"倒産リスク予備軍(Z-Score:{z_score:.2f})")
+                ai_summary_parts.append(f"倒産リスク予備軍(Z:{z_score:.2f})")
 
-        # F-Score & Accruals
         if f_score >= 7 and accruals < 0.05:
             if status != "Sell":
                 if implied_g is not None and implied_g < 10:
                     status = "Strong Buy"
                     is_good_buy = True
-                    ai_summary_parts.append(
-                        f"財務盤石(Score:{f_score})かつ割安(期待成長:{implied_g:.1f}%)"
-                    )
+                    ai_summary_parts.append(f"財務盤石(Score:{f_score})かつ割安")
                 else:
                     status = "Watch"
-                    ai_summary_parts.append(
-                        f"優良企業だが期待値が高い(成長率:{implied_g:.1f}%)"
-                    )
+                    ai_summary_parts.append(f"優良企業だが期待値が高い")
         elif f_score <= 3:
             status = "Sell"
             ai_summary_parts.append(f"財務体質が悪化中(Score:{f_score})")
 
         ai_summary = "。".join(ai_summary_parts)
 
-        # 保存
-        AnalysisResult.objects.create(
+        # 【修正】重複エラー回避のために update_or_create を使用
+        AnalysisResult.objects.update_or_create(
             stock=stock,
-            financial_statement=latest,
-            stock_price=metrics_input.stock_price,
-            market_cap=metrics_input.market_cap,
-            f_score=f_score,
-            z_score=z_score,
-            accruals_ratio=accruals,
-            gross_profitability=gross_prof,
-            roiic=roiic,
-            implied_growth_rate=implied_g,
-            status=status,
-            is_good_buy=is_good_buy,
-            ai_summary=ai_summary,
+            financial_statement=latest,  # ユニークキー
+            defaults={
+                "stock_price": metrics_input.stock_price,
+                "market_cap": metrics_input.market_cap,
+                "f_score": f_score,
+                "z_score": z_score,
+                "accruals_ratio": accruals,
+                "gross_profitability": gross_prof,
+                "roiic": roiic,
+                "implied_growth_rate": implied_g,
+                "status": status,
+                "is_good_buy": is_good_buy,
+                "ai_summary": ai_summary,
+            },
         )
 
         self.stdout.write(
