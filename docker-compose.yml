@@ -53,6 +53,7 @@ services:
       - NEXT_PUBLIC_API_URL=http://localhost:8000/graphql
       - SCHEMA_URL=http://backend:8000/graphql
     depends_on:
-      - backend
+      db:
+        condition: service_healthy
 volumes:
   postgres_data:

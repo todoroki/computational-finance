@@ -200,3 +200,43 @@ class AnalysisResult(models.Model):
 
     def __str__(self):
         return f"Analysis for {self.stock.code} ({self.status})"
+
+
+class StockFetchLog(models.Model):
+    """
+    データ取得の実行ログ。
+    Append Only（追記のみ）で運用し、履歴管理を行う。
+    """
+
+    id = models.BigAutoField(primary_key=True)  # IDを明示的に指定(Warning対策)
+
+    STATUS_CHOICES = (
+        ("SUCCESS", "Success"),
+        ("FETCHING", "Fetching"),  # 実行中
+        ("FAILURE", "Failure"),
+    )
+
+    stock = models.ForeignKey(
+        Stock, on_delete=models.CASCADE, related_name="fetch_logs"
+    )
+    status = models.CharField("ステータス", max_length=10, choices=STATUS_CHOICES)
+
+    source = models.CharField("取得元", max_length=50, default="yfinance")
+    message = models.TextField("ログ詳細", blank=True, null=True)
+
+    # エラーが発生した時のトレースバック等をJSONで残すのはアリです（必須ではない）
+    error_detail = models.JSONField("エラー詳細JSON", blank=True, null=True)
+
+    executed_at = models.DateTimeField("実行日時", auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-executed_at"]
+        indexes = [
+            models.Index(
+                fields=["stock", "-executed_at"]
+            ),  # 「ある銘柄の最新ログ」を速く引く
+            models.Index(fields=["executed_at", "status"]),  # 「今日の失敗」を速く引く
+        ]
+
+    def __str__(self):
+        return f"{self.stock.code} - {self.status} at {self.executed_at}"
