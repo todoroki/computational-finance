@@ -1,10 +1,34 @@
+import uuid6
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
 
-class Stock(models.Model):
+class BaseModel(models.Model):
     """
-    銘柄マスター。基本情報は変わらないのでここはシンプルに。
+    共通フィールドを持つ抽象ベースモデル
+    IDをUUID7化し、作成・更新日時や論理削除フラグを自動管理します。
+    """
+
+    # IDをUUID7にする (時系列ソート可能かつユニーク)
+    id = models.UUIDField(primary_key=True, default=uuid6.uuid7, editable=False)
+
+    # 運用・管理用フィールド
+    is_active = models.BooleanField(
+        "有効フラグ", default=True, help_text="Falseなら非表示"
+    )
+    is_deleted = models.BooleanField("論理削除フラグ", default=False)
+
+    # タイムスタンプ (名前は統一します)
+    created_at = models.DateTimeField("作成日時", auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField("更新日時", auto_now=True)
+
+    class Meta:
+        abstract = True  # DBにこのテーブルは作られない
+
+
+class Stock(BaseModel):
+    """
+    銘柄マスター。
     """
 
     code = models.CharField("銘柄コード", max_length=10, unique=True, db_index=True)
@@ -13,19 +37,14 @@ class Stock(models.Model):
     market = models.CharField("市場", max_length=50, blank=True, null=True)
     description = models.TextField("事業内容", blank=True, null=True)
 
-    # メタデータ
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
     def __str__(self):
         return f"{self.code} {self.name}"
 
 
-class FinancialStatement(models.Model):
+class FinancialStatement(BaseModel):
     """
     【データ倉庫】
-    決算データ（PL/BS/CF）の生数値を時系列で保存する。
-    Analysisのための原材料。
+    決算データ（PL/BS/CF）
     """
 
     PERIOD_CHOICES = (
@@ -55,7 +74,7 @@ class FinancialStatement(models.Model):
         "当期純利益", max_digits=20, decimal_places=0, null=True
     )
 
-    # New for Analytics
+    # Analytics用詳細データ
     ebit = models.DecimalField(
         "EBIT",
         max_digits=20,
@@ -81,7 +100,6 @@ class FinancialStatement(models.Model):
         null=True,
         help_text="旧net_assets",
     )
-
     current_assets = models.DecimalField(
         "流動資産", max_digits=20, decimal_places=0, null=True
     )
@@ -91,8 +109,6 @@ class FinancialStatement(models.Model):
     long_term_debt = models.DecimalField(
         "長期負債", max_digits=20, decimal_places=0, null=True
     )
-
-    # New for Analytics
     inventory = models.DecimalField(
         "棚卸資産(在庫)", max_digits=20, decimal_places=0, null=True
     )
@@ -110,14 +126,11 @@ class FinancialStatement(models.Model):
     financing_cf = models.DecimalField(
         "財務CF", max_digits=20, decimal_places=0, null=True
     )
-
-    # New for Analytics
     capex = models.DecimalField(
         "設備投資(CapEx)", max_digits=20, decimal_places=0, null=True
     )
 
     class Meta:
-        # 同じ銘柄・同じ年度・同じ四半期のデータは重複させない
         unique_together = ("stock", "fiscal_year", "quarter")
         ordering = ["-fiscal_year", "-quarter"]
 
@@ -125,24 +138,23 @@ class FinancialStatement(models.Model):
         return f"{self.stock.code} ({self.fiscal_year} Q{self.quarter})"
 
 
-class AnalysisResult(models.Model):
+class AnalysisResult(BaseModel):
     """
     【分析結果】
-    FinancialStatementを元に計算された機関投資家級スコア。
-    ロジックが変わったら再計算して上書きする。
     """
 
     stock = models.ForeignKey(
         Stock, on_delete=models.CASCADE, related_name="analysis_results"
     )
 
-    # どの時点の分析か
+    # 分析対象の日付（created_atとは別で、データの時点を表す）
     date = models.DateField("分析日", auto_now_add=True)
-    financial_statement = models.OneToOneField(  # OneToOneに変更(1決算につき1分析)
+
+    financial_statement = models.OneToOneField(
         FinancialStatement, on_delete=models.CASCADE, related_name="analysis_result"
     )
 
-    # --- 価格指標 (その時点の) ---
+    # --- 価格指標 ---
     stock_price = models.DecimalField(
         "株価", max_digits=10, decimal_places=2, null=True
     )
@@ -150,37 +162,13 @@ class AnalysisResult(models.Model):
         "時価総額", max_digits=20, decimal_places=0, null=True
     )
 
-    # ==========================================
-    # 🧱 Safety & Risk (安全装置)
-    # ==========================================
-    z_score = models.FloatField(
-        "Altman Z-Score", null=True, help_text="倒産リスク (3.0以上で安全)"
-    )
-
-    # ==========================================
-    # 🔍 Quality (利益の質)
-    # ==========================================
-    f_score = models.IntegerField(
-        "Piotroski F-Score", null=True, help_text="0-9点 (7点以上で優秀)"
-    )
-    accruals_ratio = models.FloatField(
-        "Accruals Ratio", null=True, help_text="低いほうが良い (<0.05)"
-    )
-
-    # ==========================================
-    # 📈 Structure (構造的強さ)
-    # ==========================================
-    gross_profitability = models.FloatField(
-        "Gross Profitability", null=True, help_text="粗利/総資産 (0.33以上で優秀)"
-    )
-    roiic = models.FloatField("ROIIC", null=True, help_text="増分投下資本利益率")
-
-    # ==========================================
-    # 🔮 Expectation (期待値)
-    # ==========================================
-    implied_growth_rate = models.FloatField(
-        "逆算DCF成長率(%)", null=True, help_text="現在の株価が織り込む成長率"
-    )
+    # --- Scores ---
+    z_score = models.FloatField("Altman Z-Score", null=True)
+    f_score = models.IntegerField("Piotroski F-Score", null=True)
+    accruals_ratio = models.FloatField("Accruals Ratio", null=True)
+    gross_profitability = models.FloatField("Gross Profitability", null=True)
+    roiic = models.FloatField("ROIIC", null=True)
+    implied_growth_rate = models.FloatField("逆算DCF成長率(%)", null=True)
 
     # --- 総合判定 ---
     status = models.CharField(
@@ -192,27 +180,23 @@ class AnalysisResult(models.Model):
     is_good_buy = models.BooleanField("買いシグナル", default=False)
     ai_summary = models.TextField("AI分析要約", blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
-
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["-created_at"]  # BaseModelのcreated_atを使用
         get_latest_by = "created_at"
 
     def __str__(self):
         return f"Analysis for {self.stock.code} ({self.status})"
 
 
-class StockFetchLog(models.Model):
+class StockFetchLog(BaseModel):
     """
     データ取得の実行ログ。
-    Append Only（追記のみ）で運用し、履歴管理を行う。
+    BaseModelを継承することで、IDはUUIDになり、実行日時は created_at で管理されます。
     """
-
-    id = models.BigAutoField(primary_key=True)  # IDを明示的に指定(Warning対策)
 
     STATUS_CHOICES = (
         ("SUCCESS", "Success"),
-        ("FETCHING", "Fetching"),  # 実行中
+        ("FETCHING", "Fetching"),
         ("FAILURE", "Failure"),
     )
 
@@ -220,23 +204,19 @@ class StockFetchLog(models.Model):
         Stock, on_delete=models.CASCADE, related_name="fetch_logs"
     )
     status = models.CharField("ステータス", max_length=10, choices=STATUS_CHOICES)
-
     source = models.CharField("取得元", max_length=50, default="yfinance")
     message = models.TextField("ログ詳細", blank=True, null=True)
-
-    # エラーが発生した時のトレースバック等をJSONで残すのはアリです（必須ではない）
     error_detail = models.JSONField("エラー詳細JSON", blank=True, null=True)
 
-    executed_at = models.DateTimeField("実行日時", auto_now_add=True, db_index=True)
+    # executed_at は BaseModel.created_at で代用するため削除しました
 
     class Meta:
-        ordering = ["-executed_at"]
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(
-                fields=["stock", "-executed_at"]
-            ),  # 「ある銘柄の最新ログ」を速く引く
-            models.Index(fields=["executed_at", "status"]),  # 「今日の失敗」を速く引く
+            # created_at を使ったインデックスに修正
+            models.Index(fields=["stock", "-created_at"]),
+            models.Index(fields=["created_at", "status"]),
         ]
 
     def __str__(self):
-        return f"{self.stock.code} - {self.status} at {self.executed_at}"
+        return f"{self.stock.code} - {self.status} at {self.created_at}"

@@ -88,6 +88,8 @@ typing-extensions==4.15.0
     #   strawberry-graphql
 urllib3==2.6.3
     # via requests
+uuid6==2025.0.1
+    # via computational-finance (pyproject.toml)
 websockets==16.0
     # via yfinance
 xlrd==2.0.2

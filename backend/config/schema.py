@@ -8,27 +8,28 @@ from stocks.types import StockType
 
 @strawberry.type
 class Query:
-    # 1. 検索・絞り込み機能付きの全銘柄取得
+    # limit引数を追加 (デフォルト100)
     @strawberry.field
     def stocks(
-        self, search: Optional[str] = None, status: Optional[str] = None
+        self,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 100,
     ) -> List[StockType]:
         # ベースのクエリ（コード順）
         qs = Stock.objects.all().order_by("code")
 
-        # 🔍 キーワード検索 (コード OR 銘柄名)
+        # 🔍 キーワード検索
         if search:
             qs = qs.filter(Q(code__icontains=search) | Q(name__icontains=search))
 
-        # 📊 ステータス絞り込み (例: "Strong Buy" のみ)
+        # 📊 ステータス絞り込み
         if status:
-            # analysis_results__status は、関連するAnalysisResultテーブルを見に行く
-            # distinct() は、同じ銘柄が複数ヒットするのを防ぐため
             qs = qs.filter(analysis_results__status=status).distinct()
 
-        return qs
+        # ✂️ 件数制限 (スライス)
+        return qs[:limit]
 
-    # 2. コード指定で1銘柄を取得するクエリ
     @strawberry.field
     def stock(self, code: str) -> Optional[StockType]:
         return Stock.objects.filter(code=code).first()

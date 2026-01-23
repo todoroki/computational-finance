@@ -145,6 +145,7 @@ export default async function Home({
   const data = await fetchGraphQL(GetStocksDocument, {
     search: q || null,
     status: status || null,
+    limit: 100, // ★ ここで上限を指定（必要ならもっと増やしてもいいですが、100くらいが快適です）
   });
 
   const stocks = data.stocks ?? [];

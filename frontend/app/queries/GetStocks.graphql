@@ -1,23 +1,18 @@
-query GetStocks($search: String, $status: String) {
-  stocks(search: $search, status: $status) {
+query GetStocks($search: String, $status: String, $limit: Int) {
+  stocks(search: $search, status: $status, limit: $limit) {
     code
     name
     sector
     market
 
-    # リスト表示用に最新の分析結果だけ取得
     analysisResults {
       date
       stockPrice
-
-      # 判定
       status
       isGoodBuy
-
-      # 主要スコア (カード表示用)
-      zScore # 安全性
-      grossProfitability # 強さ
-      impliedGrowthRate # 期待値
+      zScore
+      grossProfitability
+      impliedGrowthRate
     }
   }
 }
