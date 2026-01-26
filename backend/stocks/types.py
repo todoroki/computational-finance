@@ -78,13 +78,13 @@ class StockType:
         return self.financials.all().order_by("fiscal_year")
 
 
-# === 4. クエリ定義 ===
-@strawberry.type
-class Query:
-    @strawberry.field
-    def stocks(self) -> List[StockType]:
-        return Stock.objects.all()
+# # === 4. クエリ定義 ===
+# @strawberry.type
+# class Query:
+#     @strawberry.field
+#     def stocks(self) -> List[StockType]:
+#         return Stock.objects.all()
 
-    @strawberry.field
-    def stock(self, code: str) -> Optional[StockType]:
-        return Stock.objects.filter(code=code).first()
+#     @strawberry.field
+#     def stock(self, code: str) -> Optional[StockType]:
+#         return Stock.objects.filter(code=code).first()

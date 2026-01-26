@@ -19,7 +19,7 @@ query GetStockDetail($code: String!) {
 
       # Lens 1: Safety & Quality (安全・質)
       zScore # 倒産リスク
-      fScore # 財務健全性 
+      fScore # 財務健全性
       accrualsRatio # 利益の質
       # Lens 2: Structure (構造)
       grossProfitability # 稼ぐ力

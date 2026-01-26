@@ -23,6 +23,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         # 1. 対象銘柄の選定
+        IGNORE_KEYWORDS = ["ETF", "ETN", "REIT", "Fund", "Index", "Bull", "Bear"]
         if options["retry"]:
             self.stdout.write("Mode: Retrying failures from the last 24 hours...")
             # 24時間以内に FAILURE ログがあり、かつ SUCCESS ログがない（あるいは古い）ものを抽出

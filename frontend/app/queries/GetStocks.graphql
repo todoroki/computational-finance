@@ -1,5 +1,17 @@
-query GetStocks($search: String, $status: String, $limit: Int) {
-  stocks(search: $search, status: $status, limit: $limit) {
+query GetStocks(
+  $search: String
+  $status: String
+  $limit: Int
+  $sortBy: String
+  $sortOrder: String
+) {
+  stocks(
+    search: $search
+    status: $status
+    limit: $limit
+    sortBy: $sortBy # ★追加
+    sortOrder: $sortOrder # ★追加
+  ) {
     code
     name
     sector

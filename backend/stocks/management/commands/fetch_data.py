@@ -1,8 +1,12 @@
+import warnings
+
 import pandas as pd
 import yfinance as yf
 from django.core.management.base import BaseCommand
 from stocks.analytics import FinancialCalculator, FinancialMetricsInput
 from stocks.models import AnalysisResult, FinancialStatement, Stock
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 class Command(BaseCommand):

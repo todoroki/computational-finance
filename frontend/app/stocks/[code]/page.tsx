@@ -1,10 +1,27 @@
-// frontend/app/stocks/[code]/page.tsx
 import { fetchGraphQL } from "@/lib/graphql";
 import { GetStockDetailDocument } from "@/lib/gql/graphql";
-import StockFinancialChart from "@/components/StockFinancialChart";
-import AnalysisDashboard from "@/components/AnalysisDashboard"; // 追加
 import Link from "next/link";
+import StockFinancialChart from "@/components/StockFinancialChart"; // ★追加: グラフコンポーネント
 
+// --- ヘルパー関数: 数字を見やすく整形 ---
+const formatCurrency = (val?: number | null) => {
+  if (!val) return "-";
+  if (val > 1000000000000) return (val / 1000000000000).toFixed(1) + "兆円";
+  if (val > 100000000) return (val / 100000000).toFixed(0) + "億円";
+
+  return new Intl.NumberFormat("ja-JP", {
+    style: "currency",
+    currency: "JPY",
+    maximumFractionDigits: 0,
+  }).format(val);
+};
+
+const formatNumber = (val?: number | null, digits = 2) => {
+  if (val === null || val === undefined) return "-";
+  return val.toFixed(digits);
+};
+
+// --- メインコンポーネント ---
 export default async function StockDetailPage({
   params,
 }: {
@@ -12,84 +29,285 @@ export default async function StockDetailPage({
 }) {
   const { code } = await params;
 
-  // 詳細データを取得
+  // 1. データ取得
   const data = await fetchGraphQL(GetStockDetailDocument, { code });
   const stock = data.stock;
 
   if (!stock) {
     return (
-      <div className="p-8 text-error">
+      <div className="p-10 text-center text-red-500 font-bold">
         銘柄が見つかりませんでした (Code: {code})
       </div>
     );
   }
 
-  // 最新の分析結果を取得
+  // 最新の分析結果
   const analysis = stock.analysisResults?.[0];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 lg:p-10">
-      {/* ナビゲーション */}
-      <div className="text-sm breadcrumbs mb-4 text-gray-500">
-        <ul>
-          <li>
-            <Link href="/">Home</Link>
-          </li>
-          <li>{stock.code}</li>
-        </ul>
-      </div>
+    <div className="min-h-screen bg-gray-50 p-4 md:p-8 pb-20">
+      {/* 🔙 ナビゲーション */}
+      <nav className="mb-6 flex items-center text-sm text-gray-500 hover:text-blue-600 transition-colors">
+        <Link href="/">← 銘柄一覧に戻る</Link>
+      </nav>
 
-      {/* ヘッダーエリア (タイトルのみ) */}
-      <div className="mb-6">
-        <h1 className="text-4xl font-extrabold text-gray-900 flex items-center gap-3">
-          {stock.name}
-          <span className="text-xl font-normal text-gray-500 tracking-widest font-mono">
-            {stock.code}
-          </span>
-        </h1>
-        <p className="text-gray-500 mt-1">
-          {stock.sector} | {stock.market}
-        </p>
-      </div>
+      <div className="max-w-6xl mx-auto space-y-8">
+        {/* 🏷️ ヒーローセクション (社名・株価・判定) */}
+        <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between gap-6 relative overflow-hidden">
+          {/* 背景装飾 */}
+          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -z-0 opacity-50"></div>
 
-      {/* ▼▼▼ メインダッシュボード (ここが新機能！) ▼▼▼ */}
-      {/* 以前の statコンポーネント や 右カラムのスコア表示を、このDashboardに集約します */}
-      {analysis ? (
-        <div className="mb-10">
-          <AnalysisDashboard analysis={analysis} />
-        </div>
-      ) : (
-        <div className="alert alert-warning mb-10 shadow-sm">
-          <span>
-            分析データがまだありません。 (fetch_dataを実行してください)
-          </span>
-        </div>
-      )}
+          <div className="relative z-10">
+            <div className="flex flex-wrap gap-2 mb-3">
+              <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-mono font-bold tracking-wider">
+                {stock.code}
+              </span>
+              <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium border border-blue-100">
+                {stock.market}
+              </span>
+              <span className="bg-gray-50 text-gray-600 px-2 py-1 rounded text-xs border border-gray-100">
+                {stock.sector}
+              </span>
+            </div>
+            <h1 className="text-3xl md:text-5xl font-extrabold text-gray-900 mb-2 tracking-tight">
+              {stock.name}
+            </h1>
+            <div className="flex items-baseline gap-2 mt-2">
+              <span className="text-4xl font-bold text-gray-900">
+                {analysis?.stockPrice?.toLocaleString() ?? "-"}
+              </span>
+              <span className="text-sm text-gray-500 font-medium">JPY</span>
+            </div>
+          </div>
 
-      {/* 下段: チャート & 企業概要 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* 左: 財務チャート */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="font-bold text-lg mb-4 text-gray-700">
-              財務推移 (Financials)
-            </h3>
-            {/* Backendで net_assets -> totalEquity に名前が変わりましたが、
-                GraphQLのクエリで totalEquity を取得しているので、
-                そのまま渡せば中身が入っています。
-                (ただし、StockFinancialChart側で netAssets を参照している場合は修正が必要)
-             */}
-            <StockFinancialChart data={stock.financials ?? []} />
+          {/* 右側: 判定バッジ */}
+          <div className="relative z-10 flex flex-col items-start md:items-end justify-center min-w-[200px]">
+            <div
+              className={`px-6 py-3 rounded-xl text-xl font-bold text-white shadow-lg tracking-wide
+                ${
+                  analysis?.status === "Strong Buy"
+                    ? "bg-gradient-to-r from-red-600 to-rose-500 ring-4 ring-red-50"
+                    : analysis?.status === "Buy"
+                      ? "bg-gradient-to-r from-orange-500 to-amber-500"
+                      : analysis?.status === "Good"
+                        ? "bg-emerald-500"
+                        : "bg-gray-400"
+                }`}
+            >
+              {analysis?.status || "Unknown"}
+            </div>
+            {analysis?.isGoodBuy && (
+              <div className="mt-3 flex items-center gap-1.5 bg-red-50 text-red-600 px-3 py-1 rounded-full text-xs font-bold animate-pulse border border-red-100">
+                <span>🚀 AI買いシグナル点灯</span>
+              </div>
+            )}
+            <div className="mt-2 text-xs text-gray-400">
+              時価総額: {formatCurrency(analysis?.marketCap)}
+            </div>
           </div>
         </div>
 
-        {/* 右: 企業概要 */}
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="font-bold text-lg mb-4 text-gray-700">企業概要</h3>
-            <p className="text-gray-600 text-sm leading-relaxed">
+        {/* 📊 分析スコアカード (3つのレンズ) */}
+        {analysis ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* Lens 1: Safety */}
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-2 mb-4 border-b border-gray-100 pb-3">
+                <span className="text-xl">🛡️</span>
+                <h3 className="font-bold text-gray-700">安全性 (Safety)</h3>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-gray-400 font-medium uppercase">
+                  Altman Z-Score
+                </span>
+                <div className="flex items-baseline gap-2">
+                  <span
+                    className={`text-3xl font-bold ${
+                      (analysis.zScore ?? 0) > 2.99
+                        ? "text-blue-600"
+                        : (analysis.zScore ?? 0) < 1.8
+                          ? "text-red-500"
+                          : "text-yellow-600"
+                    }`}
+                  >
+                    {formatNumber(analysis.zScore)}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  倒産リスクを示す指標。3.0以上なら財務は非常に健全。1.8以下は危険水域。
+                </p>
+              </div>
+            </div>
+
+            {/* Lens 2: Structure */}
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-2 mb-4 border-b border-gray-100 pb-3">
+                <span className="text-xl">💎</span>
+                <h3 className="font-bold text-gray-700">収益構造 (Quality)</h3>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs text-gray-500 font-medium">
+                      Gross Profitability
+                    </span>
+                    <span className="text-lg font-bold text-gray-800">
+                      {formatNumber(analysis.grossProfitability)}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5">
+                    <div
+                      className="bg-blue-500 h-1.5 rounded-full"
+                      style={{
+                        width: `${Math.min(
+                          (analysis.grossProfitability ?? 0) * 100,
+                          100,
+                        )}%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center pt-2">
+                  <span className="text-xs text-gray-500 font-medium">
+                    Piotroski F-Score
+                  </span>
+                  <span className="text-lg font-bold text-gray-800">
+                    {analysis.fScore}{" "}
+                    <span className="text-xs text-gray-400 font-normal">
+                      / 9
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Lens 3: Value */}
+            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-2 mb-4 border-b border-gray-100 pb-3">
+                <span className="text-xl">💰</span>
+                <h3 className="font-bold text-gray-700">割安度 (Value)</h3>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-gray-400 font-medium uppercase">
+                  Implied Growth Rate
+                </span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-bold text-gray-800">
+                    {formatNumber(analysis.impliedGrowthRate)}%
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                  現在の株価が織り込んでいる将来成長率。これが過去の実績より低ければ「割安」の可能性あり。
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-6 py-4 rounded-xl">
+            ⚠️ 分析データがまだありません。バックエンドで `fetch_data`
+            を実行してください。
+          </div>
+        )}
+
+        {/* 📝 企業概要 & AIサマリー */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+              📄 企業概要
+            </h3>
+            <p className="text-sm text-gray-600 leading-relaxed">
               {stock.description || "情報がありません。"}
             </p>
+          </div>
+
+          <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-6 rounded-xl border border-blue-100 shadow-sm">
+            <h3 className="font-bold text-indigo-900 mb-4 flex items-center gap-2">
+              🤖 AI分析サマリー
+            </h3>
+            {analysis?.aiSummary ? (
+              <p className="text-sm text-indigo-800 leading-relaxed whitespace-pre-wrap">
+                {analysis.aiSummary}
+              </p>
+            ) : (
+              <div className="text-sm text-indigo-400 italic py-4 text-center">
+                AIによる分析コメントはまだ生成されていません。
+                <br />
+                <span className="text-xs opacity-75">(今後実装予定)</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 📊 財務データ (チャート + テーブル) */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+            <h3 className="font-bold text-gray-800">業績推移</h3>
+            <span className="text-xs text-gray-500">単位: 円</span>
+          </div>
+
+          <div className="p-6">
+            {/* ▼▼▼ 追加: グラフ表示エリア ▼▼▼ */}
+            <div className="mb-8">
+              <h4 className="text-xs font-bold text-gray-500 mb-4 uppercase tracking-wider">
+                Chart: Revenue & Operating Income
+              </h4>
+              {stock.financials && stock.financials.length > 0 ? (
+                <StockFinancialChart data={stock.financials} />
+              ) : (
+                <div className="h-64 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400">
+                  チャートデータがありません
+                </div>
+              )}
+            </div>
+
+            {/* テーブル表示エリア */}
+            <div className="overflow-x-auto">
+              <h4 className="text-xs font-bold text-gray-500 mb-4 uppercase tracking-wider">
+                Detailed Data
+              </h4>
+              <table className="w-full text-sm text-left whitespace-nowrap">
+                <thead className="bg-gray-50 text-gray-500 font-medium">
+                  <tr>
+                    <th className="px-6 py-3">決算期</th>
+                    <th className="px-6 py-3 text-right">売上高</th>
+                    <th className="px-6 py-3 text-right">営業利益</th>
+                    <th className="px-6 py-3 text-right">純利益</th>
+                    <th className="px-6 py-3 text-right">営業CF</th>
+                    <th className="px-6 py-3 text-right">純資産</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {stock.financials?.map((f, i) => (
+                    <tr
+                      key={i}
+                      className="hover:bg-blue-50/30 transition-colors"
+                    >
+                      <td className="px-6 py-4 font-mono font-medium text-gray-600">
+                        {f.fiscalYear}{" "}
+                        <span className="text-xs text-gray-400">
+                          Q{f.quarter}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {formatCurrency(f.revenue)}
+                      </td>
+                      <td className="px-6 py-4 text-right font-bold text-gray-700">
+                        {formatCurrency(f.operatingIncome)}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {formatCurrency(f.netIncome)}
+                      </td>
+                      <td className="px-6 py-4 text-right text-blue-600">
+                        {formatCurrency(f.operatingCf)}
+                      </td>
+                      <td className="px-6 py-4 text-right text-gray-500">
+                        {formatCurrency(f.totalEquity)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
