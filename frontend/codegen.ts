@@ -12,6 +12,7 @@ const config: CodegenConfig = {
             preset: "client",
             plugins: [
                 "@newmo/graphql-codegen-plugin-type-guards"
+                
             ],
             config: {
                 skipTypename: false,

@@ -1,8 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import { fetchGraphQL } from "@/lib/graphql";
 import { GetStocksDocument } from "@/lib/gql/graphql";
 import type { GetStocksQuery } from "@/lib/gql/graphql";
-
+import { useState } from "react";
+// import { useGetStocksQuery } from "@/types/generated/graphql";
+import { useQuery } from "@apollo/client/react";
 type StockSummary = GetStocksQuery["stocks"][number];
 
 // 🔍 検索バー & フィルタ & ソート
@@ -211,86 +215,180 @@ function StockCard({ stock }: { stock: StockSummary }) {
   );
 }
 
-// 🏠 メインページ
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string; status?: string; sortBy?: string }>;
-}) {
-  const { q, status, sortBy } = await searchParams;
+export default function Home() {
+  const [rankingMode, setRankingMode] = useState<string>("gap_opportunities");
+  const [searchTerm, setSearchTerm] = useState("");
 
-  // ソート順の決定: コード順以外は基本的に「降順 (desc)」が見やすいのでそう設定
-  const sortOrder = sortBy && sortBy !== "code" ? "desc" : "asc";
-
-  const data = await fetchGraphQL(GetStocksDocument, {
-    search: q || null,
-    status: status || null,
-    sortBy: sortBy || "code",
-    sortOrder: sortOrder,
-    limit: 100,
+  // ▼ 変更点3: useQuery を使用してデータを取得
+  // Documentを渡すことで、戻り値(data)の型推論が効きます
+  const { data, loading, error } = useQuery(GetStocksDocument, {
+    variables: {
+      search: searchTerm || null,
+      rankingMode: rankingMode,
+      limit: 20,
+    },
+    pollInterval: 0,
   });
 
-  const stocks = data.stocks ?? [];
-
   return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* ヘッダーエリア */}
-        <div className="text-center space-y-6 py-12">
-          <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight text-slate-900">
-            Stock{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
-              X-Ray
-            </span>
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-20">
+        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+          <h1
+            className="text-xl font-black tracking-tighter text-gray-800 flex items-center gap-1 cursor-pointer"
+            onClick={() => window.location.reload()}
+          >
+            STOCK<span className="text-blue-600">X-RAY</span>
           </h1>
-          <p className="text-lg text-slate-500 max-w-2xl mx-auto">
-            4,000銘柄の財務諸表を瞬時に透視。
-            <br />
-            <span className="font-semibold text-slate-700">
-              「倒産リスク(Z)」
-            </span>
-            と
-            <span className="font-semibold text-slate-700">「稼ぐ力(GP)」</span>
-            で、 負けない投資を。
-          </p>
 
-          <div className="flex justify-center pt-4">
-            <SearchBar q={q} status={status} sortBy={sortBy} />
-          </div>
-        </div>
-
-        {/* 結果エリア */}
-        <div>
-          <div className="flex justify-between items-end mb-6 px-2">
-            <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
-              {q || status || (sortBy && sortBy !== "code")
-                ? "Search Results"
-                : "Market Overview"}
-              <span className="text-sm font-normal text-slate-500 bg-white px-3 py-1 rounded-full border shadow-sm">
-                {stocks.length} matches
-              </span>
-            </h2>
-          </div>
-
-          {stocks.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {stocks.map((stock) => (
-                <StockCard key={stock.code} stock={stock} />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-24 bg-white rounded-2xl border border-dashed border-gray-300">
-              <div className="text-6xl mb-4">🔍</div>
-              <p className="text-xl font-bold text-gray-700">
-                No stocks found.
-              </p>
-              <p className="text-gray-500 mt-2">
-                検索条件を変更するか、データを更新してください。
-              </p>
-            </div>
-          )}
+          {/* Simple Search Input */}
+          <input
+            type="text"
+            placeholder="Search code or name..."
+            className="bg-gray-100 border-none rounded-full px-4 py-1.5 text-sm w-48 focus:w-64 focus:ring-2 focus:ring-blue-500 transition-all outline-none"
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              // 検索文字が入ったらランキングモードを解除(検索優先)
+              if (e.target.value) setRankingMode("");
+              // 空になったらデフォルトランキングに戻すならここを調整
+            }}
+          />
         </div>
       </div>
+
+      <main className="max-w-5xl mx-auto px-4 mt-8">
+        {/* Intro */}
+        {!searchTerm && (
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-extrabold text-slate-800 mb-2">
+              市場の<span className="text-blue-600">歪み</span>を見つける
+            </h2>
+            <p className="text-slate-500 text-sm">
+              AIが4,000銘柄の「期待」と「現実」のギャップを分析しました。
+            </p>
+          </div>
+        )}
+
+        {/* ▼▼▼ Market Radar Tabs (ここがランキング切り替え) ▼▼▼ */}
+        <div className="mb-8 overflow-x-auto pb-2">
+          <div className="flex flex-nowrap md:flex-wrap gap-2 justify-center min-w-max md:min-w-0 px-2">
+            {/* 1. 💎 Asymmetric Bets */}
+            <button
+              onClick={() => {
+                setRankingMode("gap_opportunities");
+                setSearchTerm("");
+              }}
+              className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all shadow-sm border whitespace-nowrap ${
+                rankingMode === "gap_opportunities"
+                  ? "bg-green-600 text-white border-green-600 ring-2 ring-green-200 ring-offset-1"
+                  : "bg-white text-gray-600 border-gray-200 hover:bg-green-50 hover:text-green-700"
+              }`}
+            >
+              💎 割安放置 (Gap &lt; 0)
+            </button>
+
+            {/* 2. 🚀 Single Engine */}
+            <button
+              onClick={() => {
+                setRankingMode("single_engine");
+                setSearchTerm("");
+              }}
+              className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all shadow-sm border whitespace-nowrap ${
+                rankingMode === "single_engine"
+                  ? "bg-purple-600 text-white border-purple-600 ring-2 ring-purple-200 ring-offset-1"
+                  : "bg-white text-gray-600 border-gray-200 hover:bg-purple-50 hover:text-purple-700"
+              }`}
+            >
+              🚀 片肺飛行 (夢株)
+            </button>
+
+            {/* 3. 🔥 Overheated */}
+            <button
+              onClick={() => {
+                setRankingMode("gap_overheated");
+                setSearchTerm("");
+              }}
+              className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all shadow-sm border whitespace-nowrap ${
+                rankingMode === "gap_overheated"
+                  ? "bg-red-500 text-white border-red-500 ring-2 ring-red-200 ring-offset-1"
+                  : "bg-white text-gray-600 border-gray-200 hover:bg-red-50 hover:text-red-700"
+              }`}
+            >
+              🔥 過熱気味 (Gap &gt; 0)
+            </button>
+          </div>
+
+          {/* モードの説明文 */}
+          <div className="mt-4 text-xs text-slate-500 bg-white p-4 rounded-xl border border-gray-200 shadow-sm max-w-2xl mx-auto text-center">
+            {rankingMode === "gap_opportunities" && (
+              <span>
+                <strong className="text-green-600 block mb-1 text-sm">
+                  【Asymmetric Bet Finder】
+                </strong>
+                市場の期待値(Implied)が、実績成長率(Actual)より著しく低い「お宝候補」です。
+                <br />
+                実力があるのに評価されていない銘柄が見つかります。
+              </span>
+            )}
+            {rankingMode === "gap_overheated" && (
+              <span>
+                <strong className="text-red-500 block mb-1 text-sm">
+                  【Overheated Zone】
+                </strong>
+                市場の期待値が、実績を大きく上回っている銘柄です。
+                <br />
+                決算ミス時の暴落リスクが高いため、保有には注意が必要です。
+              </span>
+            )}
+            {rankingMode === "single_engine" && (
+              <span>
+                <strong className="text-purple-600 block mb-1 text-sm">
+                  【Single Engine Flyers】
+                </strong>
+                現金(FCF)を生み出せていないが、高い売上成長期待だけで株価が支えられている銘柄です。
+                <br />
+                ハイリスク・ハイリターンな「夢株」たちです。
+              </span>
+            )}
+            {!rankingMode && "検索結果を表示中"}
+          </div>
+        </div>
+
+        {/* Loading */}
+        {loading && (
+          <div className="flex justify-center py-20">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="text-center py-10 text-red-500 bg-red-50 rounded-lg">
+            Error: {error.message}
+          </div>
+        )}
+
+        {/* Empty */}
+        {!loading && data?.stocks.length === 0 && (
+          <div className="text-center py-20 bg-white rounded-xl border border-dashed border-gray-300">
+            <p className="text-gray-500">
+              該当する銘柄が見つかりませんでした。
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              まだ分析データが揃っていない可能性があります。
+            </p>
+          </div>
+        )}
+
+        {/* Stock List Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {data?.stocks?.map((stock: StockSummary) => (
+            <StockCard key={stock.code} stock={stock} />
+          ))}
+        </div>
+      </main>
     </div>
   );
 }

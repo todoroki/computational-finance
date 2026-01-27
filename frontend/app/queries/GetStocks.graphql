@@ -1,6 +1,7 @@
 query GetStocks(
   $search: String
   $status: String
+  $rankingMode: String # ★追加
   $limit: Int
   $sortBy: String
   $sortOrder: String
@@ -8,6 +9,7 @@ query GetStocks(
   stocks(
     search: $search
     status: $status
+    rankingMode: $rankingMode # ★追加
     limit: $limit
     sortBy: $sortBy # ★追加
     sortOrder: $sortOrder # ★追加
@@ -29,6 +31,8 @@ query GetStocks(
       grossProfitability
       impliedGrowthRate # FCFベース (既存)
       impliedRevenueGrowth # ★追加 (売上ベース)
+      actualRevenueGrowth # 実績
+      expectationGap # 乖離
     }
   }
 }
