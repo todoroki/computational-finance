@@ -191,6 +191,22 @@ class AnalysisResult(BaseModel):
     is_good_buy = models.BooleanField("買いシグナル", default=False)
     ai_summary = models.TextField("AI分析要約", blank=True)
 
+    # 1. 企業の状態 (State)
+    # 例: "Cash Generator", "High Growth", "Distress", "Deteriorating"
+    state = models.CharField(max_length=50, default="Unclear")
+
+    # 2. 市場の期待構造 (Expectation)
+    # 例: "Overheated", "Underestimated", "Reasonable", "Single Engine"
+    expectation_structure = models.CharField(max_length=50, default="Neutral")
+
+    # 3. リスクレベル (Risk)
+    # 例: "Critical", "High", "Medium", "Low"
+    risk_level = models.CharField(max_length=20, default="Low")
+
+    # リスク要因の詳細 (カンマ区切りなどで保存)
+    # 例: "Bankruptcy Risk, Earnings Manipulation"
+    risk_details = models.TextField(null=True, blank=True)
+
     class Meta:
         ordering = ["-created_at"]  # BaseModelのcreated_atを使用
         get_latest_by = "created_at"

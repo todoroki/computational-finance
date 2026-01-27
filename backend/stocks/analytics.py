@@ -489,3 +489,65 @@ class FinancialCalculator:
             return None
 
         return implied_growth - actual_growth
+
+    @staticmethod
+    def diagnose_corporate_state(f_score, z_zone, has_fcf) -> str:
+        """
+        【第1層】企業の状態診断 (State)
+        """
+        if z_zone == "distress":
+            return "Financial Distress"  # 財務危機
+        elif f_score <= 3:
+            return "Deteriorating"  # 悪化中
+        elif f_score >= 5:  # 少し緩和
+            if has_fcf:
+                return "Cash Generator"  # 稼ぐ力あり (Compounder)
+            else:
+                return "High Growth"  # 成長投資中 (Growth)
+        else:
+            return "Neutral"  # 普通
+
+    @staticmethod
+    def diagnose_expectation(gap, implied_rev_growth, has_fcf) -> str:
+        """
+        【第2層】市場期待の構造診断 (Expectation)
+        """
+        if not has_fcf and implied_rev_growth is not None and implied_rev_growth > 25:
+            return "Single Engine"  # 片肺飛行 (売上期待のみ)
+
+        if gap is not None:
+            if gap > 20:
+                return "Overheated"  # 加熱
+            elif gap < -10:
+                return "Underestimated"  # 過小評価
+            elif gap > 10:
+                return "Optimistic"  # 楽観的
+
+        return "Reasonable"  # 妥当
+
+    @staticmethod
+    def assess_risks(z_zone, f_score, accruals) -> tuple[str, list[str]]:
+        """
+        【第3層】リスク評価 (Risk)
+        戻り値: (リスクレベル, リスク要因リスト)
+        """
+        risks = []
+        level = "Low"
+
+        # 致命的なリスク
+        if z_zone == "distress":
+            risks.append("Bankruptcy Risk")  # 倒産リスク
+            level = "Critical"
+
+        if f_score <= 3:
+            risks.append("Weak Fundamentals")  # 基礎的条件の悪化
+            if level != "Critical":
+                level = "High"
+
+        # 品質リスク
+        if accruals is not None and accruals > 0.15:  # 利益の質が悪い
+            risks.append("Low Earnings Quality")
+            if level == "Low":
+                level = "Medium"
+
+        return level, risks

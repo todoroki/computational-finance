@@ -73,13 +73,16 @@ function StockCard({ stock }: { stock: StockSummary }) {
 
   const badgeColor =
     analysis?.status === "Strong Buy"
-      ? "badge-error text-white font-bold" // 赤
+      ? "badge-error text-white font-bold"
       : analysis?.status === "Buy"
-        ? "badge-warning font-bold" // オレンジ
-        : analysis?.status === "Good"
-          ? "badge-success text-white" // 緑
-          : "badge-ghost"; // グレー
-
+        ? "badge-warning font-bold"
+        : analysis?.status === "Buy (Spec)"
+          ? "badge-warning border-dashed border-black text-black" // 投機的買い
+          : analysis?.status === "Avoid"
+            ? "badge-neutral text-gray-400" // 回避
+            : analysis?.status === "Sell"
+              ? "badge-ghost bg-gray-200"
+              : "badge-ghost";
   return (
     <Link
       href={`/stocks/${stock.code}`}

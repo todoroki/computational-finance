@@ -321,6 +321,79 @@ class Command(BaseCommand):
             status = "Sell"
             ai_summary_parts.append(f"財務体質が悪化中(Score:{f_score})")
 
+        # 準備
+        has_fcf = implied_g_fcf is not None
+        z_zone = (
+            FinancialCalculator.classify_altman_zone(z_score) if z_score else "grey"
+        )
+
+        # 1. State (状態)
+        state = FinancialCalculator.diagnose_corporate_state(f_score, z_zone, has_fcf)
+
+        # 2. Expectation (期待)
+        expectation = FinancialCalculator.diagnose_expectation(
+            gap, implied_g_rev, has_fcf
+        )
+
+        # 3. Risk (リスク)
+        risk_level, risk_factors = FinancialCalculator.assess_risks(
+            z_zone, f_score, accruals
+        )
+        risk_details_str = ", ".join(risk_factors)
+
+        # 4. Final Label (最終判定)
+        final_label = "Neutral"
+        ai_summary_parts = []
+
+        # --- ロジックの適用 ---
+
+        # Rule 1: クリティカルなリスクがあれば、何があっても "Avoid"
+        if risk_level == "Critical":
+            final_label = "Avoid"
+            ai_summary_parts.append(f"⚠️回避推奨: {risk_details_str}")
+
+        # Rule 2: 状態が悪化してれば "Sell"
+        elif state == "Deteriorating":
+            final_label = "Sell"
+            ai_summary_parts.append("財務状態が悪化しており売り推奨")
+
+        # Rule 3: 良い企業で、期待が過小評価なら "Strong Buy"
+        elif (
+            state in ["Cash Generator", "High Growth"]
+            and expectation == "Underestimated"
+        ):
+            final_label = "Strong Buy"
+            is_good_buy = True
+            ai_summary_parts.append(f"【S級】実力に対し著しく過小評価(乖離{gap:.1f}%)")
+
+        # Rule 4: 良い企業だが、期待が加熱してれば "Watch"
+        elif expectation in ["Overheated", "Optimistic"]:
+            final_label = "Watch"
+            ai_summary_parts.append("優良企業だが過熱感あり。押し目待ち")
+
+        # Rule 5: 成長株で片肺飛行だが、リスクが低ければ "Speculative Buy"
+        elif (
+            state == "High Growth"
+            and expectation == "Single Engine"
+            and risk_level == "Low"
+        ):
+            final_label = "Buy (Spec)"  # 投機的買い
+            is_good_buy = True
+            ai_summary_parts.append("高成長への期待買い(ボラティリティ注意)")
+
+        # Rule 6: それ以外の良い企業
+        elif state in ["Cash Generator", "High Growth"] and risk_level != "High":
+            final_label = "Buy"
+            is_good_buy = True
+            ai_summary_parts.append("好財務かつ期待値も妥当")
+
+        else:
+            final_label = "Hold"
+            ai_summary_parts.append("特筆すべき材料なし")
+
+        # 保存用サマリ作成
+        ai_summary = "。".join(ai_summary_parts)
+
         ai_summary = "。".join(ai_summary_parts)
 
         # ▼ 3. DB保存 (重複キーを削除)
@@ -339,7 +412,11 @@ class Command(BaseCommand):
                 "implied_growth_rate": implied_g_fcf,
                 # 売上ベース (新規)
                 "implied_revenue_growth": implied_g_rev,
-                "status": status,
+                "status": final_label,  # 従来のstatusカラムに詳細ラベルを入れる
+                "state": state,  # ★新規
+                "expectation_structure": expectation,  # ★新規
+                "risk_level": risk_level,  # ★新規
+                "risk_details": risk_details_str,  # ★新規
                 "is_good_buy": is_good_buy,
                 "ai_summary": ai_summary,
                 # ▼ 追加保存
@@ -350,6 +427,6 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Analyzed {stock.name}: GP={gross_prof:.2f}, RevGrowthExpect={implied_g_rev if implied_g_rev else 'N/A'}"
+                f"Analyzed {stock.name}: [{final_label}] State={state}, Exp={expectation}, Risk={risk_level}"
             )
         )

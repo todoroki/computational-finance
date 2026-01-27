@@ -25,13 +25,17 @@ export type AnalysisResultType = {
   aiSummary?: Maybe<Scalars['String']['output']>;
   date: Scalars['Date']['output'];
   expectationGap?: Maybe<Scalars['Float']['output']>;
+  expectationStructure: Scalars['String']['output'];
   fScore?: Maybe<Scalars['Int']['output']>;
   grossProfitability?: Maybe<Scalars['Float']['output']>;
   impliedGrowthRate?: Maybe<Scalars['Float']['output']>;
   impliedRevenueGrowth?: Maybe<Scalars['Float']['output']>;
   isGoodBuy: Scalars['Boolean']['output'];
   marketCap?: Maybe<Scalars['Float']['output']>;
+  riskDetails?: Maybe<Scalars['String']['output']>;
+  riskLevel: Scalars['String']['output'];
   roiic?: Maybe<Scalars['Float']['output']>;
+  state: Scalars['String']['output'];
   status: Scalars['String']['output'];
   stockPrice?: Maybe<Scalars['Float']['output']>;
   zScore?: Maybe<Scalars['Float']['output']>;

@@ -61,7 +61,7 @@ class Command(BaseCommand):
             return
 
         # 🔥 並列設定
-        MAX_WORKERS = 4
+        MAX_WORKERS = 6
         self.stdout.write(
             f"Starting PARALLEL batch process for {total} stocks (Workers: {MAX_WORKERS})..."
         )

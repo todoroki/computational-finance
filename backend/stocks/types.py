@@ -34,6 +34,10 @@ class AnalysisResultType:
     implied_revenue_growth: float | None  # ★追加: 売上ベース
     actual_revenue_growth: float | None
     expectation_gap: float | None
+    state: str
+    expectation_structure: str
+    risk_level: str
+    risk_details: str | None
 
 
 # === 2. 財務データの型定義 ===
