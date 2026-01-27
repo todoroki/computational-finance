@@ -181,24 +181,66 @@ export default async function StockDetailPage({
               </div>
             </div>
 
-            {/* Lens 3: Value */}
+            {/* Lens 3: Value (Expectations MRI) */}
             <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center gap-2 mb-4 border-b border-gray-100 pb-3">
-                <span className="text-xl">💰</span>
-                <h3 className="font-bold text-gray-700">割安度 (Value)</h3>
+                <span className="text-xl">⚖️</span>
+                <h3 className="font-bold text-gray-700">
+                  期待値MRI (Valuation)
+                </h3>
               </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-gray-400 font-medium uppercase">
-                  Implied Growth Rate
-                </span>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-bold text-gray-800">
-                    {formatNumber(analysis.impliedGrowthRate)}%
-                  </span>
+
+              <div className="flex flex-col gap-4">
+                {/* 1. FCFベース (現実) */}
+                <div>
+                  <div className="flex justify-between items-end mb-1">
+                    <span className="text-xs text-gray-500 font-bold">
+                      FCF逆算成長率
+                    </span>
+                    <span
+                      className={`text-lg font-bold ${analysis.impliedGrowthRate === null ? "text-gray-400" : "text-gray-800"}`}
+                    >
+                      {analysis.impliedGrowthRate
+                        ? `${analysis.impliedGrowthRate.toFixed(1)}%`
+                        : "算出不能"}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-gray-400">
+                    ※ 現在のキャッシュフローを基準とした期待値
+                  </p>
                 </div>
-                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                  現在の株価が織り込んでいる将来成長率。これが過去の実績より低ければ「割安」の可能性あり。
-                </p>
+
+                {/* 2. 売上ベース (夢・ストーリー) */}
+                <div className="pt-3 border-t border-dashed border-gray-200">
+                  <div className="flex justify-between items-end mb-1">
+                    <span className="text-xs text-blue-600 font-bold">
+                      売上逆算成長率 (PSR)
+                    </span>
+                    <span className="text-xl font-bold text-blue-700">
+                      {analysis.impliedRevenueGrowth
+                        ? `${analysis.impliedRevenueGrowth.toFixed(1)}%`
+                        : "-"}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mb-2">
+                    ※ 業界平均の利益率を達成すると仮定した場合の期待値
+                  </p>
+
+                  {/* 解釈 (Interpretation) */}
+                  {analysis.impliedRevenueGrowth && (
+                    <div className="bg-blue-50 px-3 py-2 rounded text-xs text-blue-800 font-medium">
+                      💡 市場は
+                      {analysis.impliedRevenueGrowth < 5
+                        ? "「安定・成熟」"
+                        : analysis.impliedRevenueGrowth < 15
+                          ? "「堅実な成長」"
+                          : analysis.impliedRevenueGrowth < 30
+                            ? "「高成長」"
+                            : "「超・高成長(熱狂)」"}
+                      を織り込んでいます。
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

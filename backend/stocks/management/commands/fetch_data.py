@@ -28,16 +28,48 @@ class Command(BaseCommand):
             self.stderr.write(f"Error fetching info: {e}")
             return
 
-        # 1. Stock (銘柄マスタ) 保存
-        stock, _ = Stock.objects.update_or_create(
-            code=ticker_symbol,
-            defaults={
-                "name": info.get("longName", "不明"),
-                "sector": info.get("sector", "不明"),
-                "market": "Prime",
-                "description": info.get("longBusinessSummary", "")[:500],
-            },
-        )
+        # 1. Stockを取得 (なければ作成)
+        # update_or_create ではなく get_or_create を使います
+        stock, created = Stock.objects.get_or_create(code=ticker_symbol)
+
+        should_save = False
+
+        # --- A. 社名 (Name) ---
+        # 既存データがない、または「不明」の場合のみ更新
+        if not stock.name or stock.name == "不明":
+            # shortNameがあればそれを、なければ longName を使う
+            stock.name = info.get("shortName") or info.get("longName", "不明")
+            should_save = True
+
+        # --- B. セクター (Sector) ---
+        if not stock.sector or stock.sector == "不明":
+            stock.sector = info.get("sector", "不明")
+            should_save = True
+
+        # --- C. 市場 (Market) ---
+        # "Prime" と決め打ちせず、データがない場合のみ Industry等で埋める
+        if not stock.market or stock.market == "不明":
+            # 市場区分の代わりに Industry (e.g., Biotechnology) を入れておく
+            stock.market = info.get("industry", "Unknown")
+            should_save = True
+
+        # --- D. 概要 (Description) ---
+        if not stock.description or stock.description == "不明":
+            summary = info.get("longBusinessSummary", "")
+            stock.description = summary[:500]  # 文字数制限
+            should_save = True
+
+        # 2. 変更があった場合のみ保存
+        if created or should_save:
+            stock.save()
+            action = "Created" if created else "Updated"
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"{action} stock info for {stock.code}: {stock.name}"
+                )
+            )
+        else:
+            self.stdout.write(f"No info updates needed for {stock.code}")
 
         # 2. 財務データ取得
         financials = stock_data.financials.T
@@ -97,6 +129,14 @@ class Command(BaseCommand):
 
             # === BS ===
             total_assets = get_val(bs, date, "Total Assets")
+            # ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+            # 【ここに追加！】幽霊データ撃退ロジック
+            # 総資産が 0 ということは、BSデータが存在しないか、
+            # Yahooが空の予定データ(2025年など)を返しているということ。
+            # その場合、この年度はゴミなので保存せずにスキップする。
+            if total_assets == 0:
+                continue
+            # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
             total_equity = get_val(
                 bs,
                 date,
@@ -204,8 +244,9 @@ class Command(BaseCommand):
             prev_current_liabilities=safe(prev.current_liabilities),
             prev_inventory=safe(prev.inventory),
             prev_long_term_debt=safe(prev.long_term_debt),
+            sector=stock.sector or "Unknown",  # ★追加: セクターを渡す
         )
-
+        # ▼ 1. 指標計算 (重複を削除し、整理しました)
         f_score, f_reasons = FinancialCalculator.calculate_piotroski_f_score(
             metrics_input
         )
@@ -213,12 +254,19 @@ class Command(BaseCommand):
         accruals = FinancialCalculator.calculate_accruals_ratio(metrics_input)
         gross_prof = FinancialCalculator.calculate_gross_profitability(metrics_input)
         roiic = FinancialCalculator.calculate_roiic(metrics_input)
-        implied_g = FinancialCalculator.calculate_implied_growth_rate(metrics_input)
 
+        # 2つの期待値
+        implied_g_fcf = FinancialCalculator.calculate_implied_growth_rate(metrics_input)
+        implied_g_rev = FinancialCalculator.calculate_implied_revenue_growth(
+            metrics_input
+        )
+
+        # ▼ 2. ステータス判定ロジック (バグ修正版)
         status = "Hold"
         ai_summary_parts = []
         is_good_buy = False
 
+        # A. 倒産リスク判定 (最優先)
         if z_score is not None:
             z_zone = FinancialCalculator.classify_altman_zone(z_score)
             if z_zone == "distress":
@@ -227,25 +275,44 @@ class Command(BaseCommand):
             elif z_zone == "grey":
                 ai_summary_parts.append(f"倒産リスク予備軍(Z:{z_score:.2f})")
 
-        if f_score >= 7 and accruals < 0.05:
+        # B. 財務健全性判定
+        if f_score >= 6:  # 財務は優秀
+            # 既にSell (倒産リスク) でなければ判定へ
             if status != "Sell":
-                if implied_g is not None and implied_g < 10:
+                # パターン1: 【王道】FCFが出ていて、割安 (Strong Buy)
+                if implied_g_fcf is not None and implied_g_fcf < 10:
                     status = "Strong Buy"
                     is_good_buy = True
-                    ai_summary_parts.append(f"財務盤石(Score:{f_score})かつ割安")
+                    ai_summary_parts.append(f"財務盤石(Score:{f_score})かつFCF割安")
+
+                # パターン2: 【成長株】FCFはないが、売上成長期待が現実的 (Buy)
+                # (例: 赤字SaaSだが、市場期待が年率20%以下で収まっているなら買い)
+                elif (
+                    implied_g_fcf is None
+                    and implied_g_rev is not None
+                    and implied_g_rev < 20
+                ):
+                    status = "Buy"
+                    is_good_buy = True
+                    ai_summary_parts.append(
+                        f"赤字だが売上期待値({implied_g_rev:.1f}%)は妥当"
+                    )
+
+                # パターン3: 良い企業だが、期待値が高すぎる (Watch)
                 else:
                     status = "Watch"
-                    ai_summary_parts.append(f"優良企業だが期待値が高い")
+                    ai_summary_parts.append("優良企業だが市場の期待値が高い")
+
         elif f_score <= 3:
             status = "Sell"
             ai_summary_parts.append(f"財務体質が悪化中(Score:{f_score})")
 
         ai_summary = "。".join(ai_summary_parts)
 
-        # 【修正】重複エラー回避のために update_or_create を使用
+        # ▼ 3. DB保存 (重複キーを削除)
         AnalysisResult.objects.update_or_create(
             stock=stock,
-            financial_statement=latest,  # ユニークキー
+            financial_statement=latest,
             defaults={
                 "stock_price": metrics_input.stock_price,
                 "market_cap": metrics_input.market_cap,
@@ -254,7 +321,10 @@ class Command(BaseCommand):
                 "accruals_ratio": accruals,
                 "gross_profitability": gross_prof,
                 "roiic": roiic,
-                "implied_growth_rate": implied_g,
+                # FCFベース (既存)
+                "implied_growth_rate": implied_g_fcf,
+                # 売上ベース (新規)
+                "implied_revenue_growth": implied_g_rev,
                 "status": status,
                 "is_good_buy": is_good_buy,
                 "ai_summary": ai_summary,
@@ -263,6 +333,6 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Analyzed {stock.name}: Status={status}, GP={gross_prof:.2f}, Z={z_score if z_score else 'N/A'}"
+                f"Analyzed {stock.name}: GP={gross_prof:.2f}, RevGrowthExpect={implied_g_rev if implied_g_rev else 'N/A'}"
             )
         )

@@ -14,6 +14,9 @@ query GetStocks(
   ) {
     code
     name
+    japaneseName # ★追加
+    japaneseSector # ★追加
+    japaneseMarket
     sector
     market
 
@@ -24,7 +27,8 @@ query GetStocks(
       isGoodBuy
       zScore
       grossProfitability
-      impliedGrowthRate
+      impliedGrowthRate # FCFベース (既存)
+      impliedRevenueGrowth # ★追加 (売上ベース)
     }
   }
 }

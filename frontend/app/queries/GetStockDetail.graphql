@@ -27,6 +27,8 @@ query GetStockDetail($code: String!) {
       # Lens 3: Expectation (期待)
       impliedGrowthRate # 逆算DCF
       # =======================
+
+      impliedRevenueGrowth # ★ 売上ベース
     }
 
     financials {

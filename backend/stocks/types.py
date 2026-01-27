@@ -31,6 +31,8 @@ class AnalysisResultType:
     is_good_buy: bool
     ai_summary: str | None
 
+    implied_revenue_growth: float | None  # ★追加: 売上ベース
+
 
 # === 2. 財務データの型定義 ===
 @strawberry.django.type(FinancialStatement)
@@ -66,6 +68,11 @@ class StockType:
     sector: str | None
     market: str | None
     description: str | None
+    # ▼▼▼ これがないとエラーになります ▼▼▼
+    japanese_name: str | None
+    japanese_sector: str | None
+    japanese_market: str | None
+    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
     # リレーション: 分析結果 (最新順)
     @strawberry.field

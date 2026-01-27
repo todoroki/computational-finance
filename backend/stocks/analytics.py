@@ -46,6 +46,7 @@ class FinancialMetricsInput:
     prev_current_liabilities: Optional[float] = None
     prev_inventory: Optional[float] = None
     prev_long_term_debt: Optional[float] = None
+    sector: str = "Unknown"
 
 
 class FinancialCalculator:
@@ -390,3 +391,69 @@ class FinancialCalculator:
             reasons.append("回転率改善")
 
         return score, reasons
+
+    @staticmethod
+    def get_target_margin(sector: str) -> float:
+        """
+        プロの一手: セクターごとの標準的な「成熟後のFCFマージン」を返す。
+        これを固定値(0.1)にしないことで、分析の精度が劇的に上がる。
+        """
+        # 簡易マッピング (必要に応じて微調整してください)
+        sector_margins = {
+            "Information & Communication": 0.20,  # 情報通信 (SaaS等は高収益)
+            "Pharmaceutical": 0.20,  # 医薬品
+            "Services": 0.10,  # サービス
+            "Electric Appliances": 0.08,  # 電気機器
+            "Transportation Equipment": 0.06,  # 輸送用機器 (自動車など)
+            "Retail Trade": 0.04,  # 小売 (薄利多売)
+            "Wholesale Trade": 0.03,  # 卸売
+            "Construction": 0.05,  # 建設
+            "Banks": 0.15,  # 銀行
+            "Real Estate": 0.12,  # 不動産
+        }
+        # 部分一致検索 (例: "Pharmaceuticals" -> "Pharmaceutical")
+        for key, margin in sector_margins.items():
+            if key in sector:
+                return margin
+
+        return 0.10  # デフォルトは10%
+
+    @staticmethod
+    def calculate_implied_revenue_growth(
+        input_data: FinancialMetricsInput,
+    ) -> float | None:
+        """
+        【新実装】売上高期待成長率 (Revenue-based Implied Growth)
+        PSRとセクター別ターゲットマージンから、市場が期待する売上成長率を逆算する。
+        """
+        market_cap = input_data.market_cap
+        revenue = input_data.revenue
+
+        if revenue <= 0 or market_cap <= 0:
+            return None
+
+        # 1. 現状のPSR
+        psr = market_cap / revenue
+
+        # 2. セクターに応じた「あるべき利益率」を取得
+        target_margin = FinancialCalculator.get_target_margin(input_data.sector)
+
+        # 3. パラメータ (保守的設定)
+        r = 0.07  # 割引率
+        g_term = 0.02  # 永久成長率
+
+        # 4. 逆算ロジック
+        # PSR = target_margin * (1+g)^5 / (r - g_term)
+        # (1+g)^5 = PSR * (r - g_term) / target_margin
+
+        try:
+            base_val = psr * (r - g_term) / target_margin
+
+            if base_val < 0:
+                return 0.0
+
+            implied_g = (base_val ** (1 / 5)) - 1
+            return implied_g * 100  # %表記
+
+        except:
+            return None

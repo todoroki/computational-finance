@@ -37,6 +37,12 @@ class Stock(BaseModel):
     market = models.CharField("市場", max_length=50, blank=True, null=True)
     description = models.TextField("事業内容", blank=True, null=True)
 
+    # ▼▼▼ 追加: 日本語データ用フィールド (NULL許可) ▼▼▼
+    japanese_name = models.CharField(max_length=200, null=True, blank=True)
+    japanese_sector = models.CharField(max_length=100, null=True, blank=True)
+    japanese_market = models.CharField(max_length=100, null=True, blank=True)
+    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
     def __str__(self):
         return f"{self.code} {self.name}"
 
@@ -169,6 +175,7 @@ class AnalysisResult(BaseModel):
     gross_profitability = models.FloatField("Gross Profitability", null=True)
     roiic = models.FloatField("ROIIC", null=True)
     implied_growth_rate = models.FloatField("逆算DCF成長率(%)", null=True)
+    implied_revenue_growth = models.FloatField(null=True, blank=True)  # 売上ベース
 
     # --- 総合判定 ---
     status = models.CharField(

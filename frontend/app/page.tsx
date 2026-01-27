@@ -67,6 +67,10 @@ function StockCard({ stock }: { stock: StockSummary }) {
   const analysis = stock.analysisResults?.[0];
   const price = analysis?.stockPrice?.toLocaleString() ?? "---";
 
+  const displayName = stock.japaneseName || stock.name;
+  const displaySector = stock.japaneseSector || stock.sector;
+  const displayMarket = stock.japaneseMarket || stock.market;
+
   const badgeColor =
     analysis?.status === "Strong Buy"
       ? "badge-error text-white font-bold" // 赤
@@ -88,7 +92,7 @@ function StockCard({ stock }: { stock: StockSummary }) {
               {stock.code}
             </span>
             <h3 className="card-title text-lg group-hover:text-blue-600 transition-colors leading-tight">
-              {stock.name}
+              {displayName}
             </h3>
           </div>
           <div className={`badge ${badgeColor} whitespace-nowrap`}>
@@ -98,16 +102,17 @@ function StockCard({ stock }: { stock: StockSummary }) {
 
         <div className="text-xs text-gray-500 mb-4 flex gap-2">
           <span className="bg-gray-100 px-1.5 py-0.5 rounded">
-            {stock.market}
+            {displayMarket}
           </span>
           <span className="bg-gray-100 px-1.5 py-0.5 rounded">
-            {stock.sector}
+            {displaySector}
           </span>
         </div>
 
         {/* ミニスコアボード */}
         {analysis ? (
           <div className="grid grid-cols-3 gap-2 text-center bg-gray-50 p-2 rounded-lg border border-gray-100">
+            {/* 1. Z-Score */}
             <div>
               <div className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">
                 Z-Score
@@ -122,6 +127,8 @@ function StockCard({ stock }: { stock: StockSummary }) {
                 {analysis.zScore?.toFixed(2) ?? "-"}
               </div>
             </div>
+
+            {/* 2. Gross Profitability */}
             <div>
               <div className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">
                 Gross P
@@ -138,15 +145,50 @@ function StockCard({ stock }: { stock: StockSummary }) {
                   : "-"}
               </div>
             </div>
+
+            {/* 3. Growth (FCF優先、なければRevenue) */}
             <div>
-              <div className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">
-                Exp.Grw
-              </div>
-              <div className="font-bold text-sm text-gray-700">
-                {analysis.impliedGrowthRate
-                  ? `${analysis.impliedGrowthRate.toFixed(1)}%`
-                  : "-"}
-              </div>
+              {analysis.impliedGrowthRate != null ? (
+                // FCFベースがある場合
+                <>
+                  <div className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">
+                    FCF Grw
+                  </div>
+                  <div
+                    className={`font-bold text-sm ${
+                      analysis.impliedGrowthRate > 10
+                        ? "text-red-500"
+                        : "text-green-600"
+                    }`}
+                  >
+                    {analysis.impliedGrowthRate.toFixed(1)}%
+                  </div>
+                </>
+              ) : analysis.impliedRevenueGrowth != null ? (
+                // FCFはないが、売上ベースがある場合 (ここが進化！)
+                <>
+                  <div className="text-[9px] text-blue-400 uppercase font-bold tracking-wider">
+                    Rev Grw
+                  </div>
+                  <div
+                    className={`font-bold text-sm ${
+                      analysis.impliedRevenueGrowth > 30
+                        ? "text-red-500"
+                        : "text-blue-600"
+                    }`}
+                  >
+                    {analysis.impliedRevenueGrowth.toFixed(1)}%
+                  </div>
+                </>
+              ) : (
+                // 両方ない場合
+                <>
+                  <div className="text-[9px] text-gray-400 uppercase font-bold tracking-wider">
+                    Growth
+                  </div>
+                  <div className="font-bold text-sm text-gray-400">-</div>
+                </>
+              )}
             </div>
           </div>
         ) : (
