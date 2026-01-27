@@ -457,3 +457,35 @@ class FinancialCalculator:
 
         except:
             return None
+
+    @staticmethod
+    def calculate_actual_revenue_growth(
+        input_data: FinancialMetricsInput,
+    ) -> float | None:
+        """
+        【実績】対前年売上成長率 (YoY Revenue Growth)
+        """
+        if input_data.prev_revenue is None or input_data.prev_revenue == 0:
+            return None
+
+        # (今回 - 前回) / 前回
+        growth = (
+            input_data.revenue - input_data.prev_revenue
+        ) / input_data.prev_revenue
+        return growth * 100  # %表記
+
+    @staticmethod
+    def calculate_reality_gap(
+        implied_growth: float | None, actual_growth: float | None
+    ) -> float | None:
+        """
+        【乖離】Reality Gap
+        市場の期待(Implied) - 現実の実績(Actual)
+
+        正の値が大きい: 過熱 (実績以上に期待されている)
+        負の値が大きい: 失望/放置 (実績より低く見積もられている = Asymmetric Betのチャンス)
+        """
+        if implied_growth is None or actual_growth is None:
+            return None
+
+        return implied_growth - actual_growth

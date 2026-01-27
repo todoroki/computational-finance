@@ -241,6 +241,85 @@ export default async function StockDetailPage({
                     </div>
                   )}
                 </div>
+                {/* Reality Gap Detector */}
+                <div className="mt-4 pt-4 border-t border-dashed border-gray-200">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-bold text-gray-500">
+                      Expectation Reality Gap
+                    </span>
+                    <span className="text-xs text-gray-400">期待乖離度</span>
+                  </div>
+
+                  {analysis.expectationGap != null ? (
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>
+                          実績成長:{" "}
+                          <span className="font-mono">
+                            {analysis.actualRevenueGrowth?.toFixed(1)}%
+                          </span>
+                        </span>
+                        <span>vs</span>
+                        <span>
+                          市場期待:{" "}
+                          <span className="font-mono">
+                            {analysis.impliedRevenueGrowth?.toFixed(1)}%
+                          </span>
+                        </span>
+                      </div>
+
+                      {/* バー表示 */}
+                      <div className="w-full bg-gray-100 rounded-full h-2.5 relative overflow-hidden">
+                        {/* 0地点マーカー */}
+                        <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-gray-300 z-10"></div>
+
+                        {/* 乖離バー */}
+                        <div
+                          className={`h-2.5 rounded-full ${
+                            analysis.expectationGap > 0
+                              ? "bg-red-400"
+                              : "bg-green-500"
+                          }`}
+                          style={{
+                            width: `${Math.min(Math.abs(analysis.expectationGap), 50)}%`, // 50%でカンスト
+                            marginLeft:
+                              analysis.expectationGap > 0
+                                ? "50%"
+                                : `calc(50% - ${Math.min(Math.abs(analysis.expectationGap), 50)}%)`,
+                          }}
+                        ></div>
+                      </div>
+
+                      <div className="text-xs text-center mt-1 font-bold">
+                        {analysis.expectationGap > 20 ? (
+                          <span className="text-red-600">
+                            ⚠️ 過熱警戒 (Euphoria)
+                          </span>
+                        ) : analysis.expectationGap > 5 ? (
+                          <span className="text-orange-500">やや期待先行</span>
+                        ) : analysis.expectationGap < -20 ? (
+                          <span className="text-green-600">
+                            💎 激安放置 (Deep Value)
+                          </span>
+                        ) : analysis.expectationGap < -5 ? (
+                          <span className="text-green-500">
+                            💰 期待以下 (Opportunity)
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">適正水準 (Fair)</span>
+                        )}
+                        <span className="ml-2 text-gray-400 font-mono">
+                          (Gap: {analysis.expectationGap > 0 ? "+" : ""}
+                          {analysis.expectationGap.toFixed(1)}%)
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-400 text-center">
+                      データ不足により計算不可
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

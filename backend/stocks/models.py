@@ -177,6 +177,10 @@ class AnalysisResult(BaseModel):
     implied_growth_rate = models.FloatField("逆算DCF成長率(%)", null=True)
     implied_revenue_growth = models.FloatField(null=True, blank=True)  # 売上ベース
 
+    # ▼▼▼ 追加: 現実と乖離 ▼▼▼
+    actual_revenue_growth = models.FloatField(null=True, blank=True)  # 実績成長率
+    expectation_gap = models.FloatField(null=True, blank=True)  # 期待乖離 (Gap)
+
     # --- 総合判定 ---
     status = models.CharField(
         "判定ステータス",

@@ -32,6 +32,8 @@ class AnalysisResultType:
     ai_summary: str | None
 
     implied_revenue_growth: float | None  # ★追加: 売上ベース
+    actual_revenue_growth: float | None
+    expectation_gap: float | None
 
 
 # === 2. 財務データの型定義 ===

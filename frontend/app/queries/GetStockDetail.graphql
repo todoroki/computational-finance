@@ -29,6 +29,8 @@ query GetStockDetail($code: String!) {
       # =======================
 
       impliedRevenueGrowth # ★ 売上ベース
+      actualRevenueGrowth # ★追加
+      expectationGap # ★追加
     }
 
     financials {

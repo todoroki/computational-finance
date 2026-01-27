@@ -261,12 +261,20 @@ class Command(BaseCommand):
             metrics_input
         )
 
-        # ▼ 2. ステータス判定ロジック (バグ修正版)
+        # ▼ 3. 現実(Actual)と乖離(Gap)を計算
+        actual_g_rev = FinancialCalculator.calculate_actual_revenue_growth(
+            metrics_input
+        )
+
+        # ギャップ = 期待(PSR逆算) - 実績(YoY)
+        gap = FinancialCalculator.calculate_reality_gap(implied_g_rev, actual_g_rev)
+
+        # ▼ 2. ステータス判定ロジック (統合修正版)
         status = "Hold"
         ai_summary_parts = []
         is_good_buy = False
 
-        # A. 倒産リスク判定 (最優先)
+        # A. 倒産リスク判定 (最優先: 死ぬ会社は買わない)
         if z_score is not None:
             z_zone = FinancialCalculator.classify_altman_zone(z_score)
             if z_zone == "distress":
@@ -286,7 +294,6 @@ class Command(BaseCommand):
                     ai_summary_parts.append(f"財務盤石(Score:{f_score})かつFCF割安")
 
                 # パターン2: 【成長株】FCFはないが、売上成長期待が現実的 (Buy)
-                # (例: 赤字SaaSだが、市場期待が年率20%以下で収まっているなら買い)
                 elif (
                     implied_g_fcf is None
                     and implied_g_rev is not None
@@ -298,7 +305,14 @@ class Command(BaseCommand):
                         f"赤字だが売上期待値({implied_g_rev:.1f}%)は妥当"
                     )
 
-                # パターン3: 良い企業だが、期待値が高すぎる (Watch)
+                # パターン3: 【非対称の賭け】期待値が高くても、実績との乖離がマイナスなら買い (Buy)
+                # (例: 市場は30%成長を期待しているが、実は実績40%成長していて、まだ評価不足)
+                elif gap is not None and gap < -5:
+                    status = "Buy"
+                    is_good_buy = True
+                    ai_summary_parts.append(f"実力過小評価(乖離{gap:.1f}%)")
+
+                # パターン4: 良い企業だが、期待値が高すぎてGapもプラス (Watch)
                 else:
                     status = "Watch"
                     ai_summary_parts.append("優良企業だが市場の期待値が高い")
@@ -328,6 +342,9 @@ class Command(BaseCommand):
                 "status": status,
                 "is_good_buy": is_good_buy,
                 "ai_summary": ai_summary,
+                # ▼ 追加保存
+                "actual_revenue_growth": actual_g_rev,
+                "expectation_gap": gap,
             },
         )
 
