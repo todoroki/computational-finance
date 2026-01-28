@@ -31,6 +31,14 @@ query GetStockDetail($code: String!) {
       impliedRevenueGrowth # ★ 売上ベース
       actualRevenueGrowth # ★追加
       expectationGap # ★追加
+
+      state                 # 企業の健康状態
+      expectationStructure  # 期待の構造
+      riskLevel             # リスクレベル
+      riskDetails           # リスク詳細
+      
+      
+      
     }
 
     financials {

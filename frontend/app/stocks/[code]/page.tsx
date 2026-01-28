@@ -1,14 +1,22 @@
-import { fetchGraphQL } from "@/lib/graphql";
-import { GetStockDetailDocument } from "@/lib/gql/graphql";
-import Link from "next/link";
-import StockFinancialChart from "@/components/StockFinancialChart"; // ★追加: グラフコンポーネント
+"use client";
 
-// --- ヘルパー関数: 数字を見やすく整形 ---
+import React, { use } from "react"; // ★ use をインポート
+import { useQuery } from "@apollo/client/react";
+import { GetStockDetailDocument } from "@/lib/gql/graphql";
+import type { GetStockDetailQuery } from "@/lib/gql/graphql";
+import Link from "next/link";
+import TradingViewWidget from "@/components/TradingViewWidget";
+import StockFinancialChart from "@/components/StockFinancialChart";
+
+// --- 型定義の抽出 ---
+type StockData = NonNullable<GetStockDetailQuery["stock"]>;
+type FinancialData = NonNullable<StockData["financials"]>[number];
+
+// --- ヘルパー関数 ---
 const formatCurrency = (val?: number | null) => {
   if (!val) return "-";
   if (val > 1000000000000) return (val / 1000000000000).toFixed(1) + "兆円";
   if (val > 100000000) return (val / 100000000).toFixed(0) + "億円";
-
   return new Intl.NumberFormat("ja-JP", {
     style: "currency",
     currency: "JPY",
@@ -16,350 +24,301 @@ const formatCurrency = (val?: number | null) => {
   }).format(val);
 };
 
-const formatNumber = (val?: number | null, digits = 2) => {
-  if (val === null || val === undefined) return "-";
-  return val.toFixed(digits);
-};
-
 // --- メインコンポーネント ---
-export default async function StockDetailPage({
+export default function StockDetailPage({
   params,
 }: {
+  // ★重要: Next.js 15では params は Promise です
   params: Promise<{ code: string }>;
 }) {
-  const { code } = await params;
+  // ★重要: use() を使って Promise をほどきます
+  const { code } = use(params);
 
   // 1. データ取得
-  const data = await fetchGraphQL(GetStockDetailDocument, { code });
-  const stock = data.stock;
+  const { data, loading, error } = useQuery(GetStockDetailDocument, {
+    variables: { code },
+    skip: !code, // codeが無いときはクエリを飛ばす安全策
+  });
 
-  if (!stock) {
+  if (loading)
     return (
-      <div className="p-10 text-center text-red-500 font-bold">
-        銘柄が見つかりませんでした (Code: {code})
+      <div className="min-h-screen flex justify-center items-center text-gray-400">
+        Loading MRI data...
       </div>
     );
-  }
+  if (error)
+    return (
+      <div className="min-h-screen flex justify-center items-center text-red-500">
+        Error: {error.message}
+      </div>
+    );
+  if (!data?.stock)
+    return (
+      <div className="min-h-screen flex justify-center items-center">
+        Stock not found
+      </div>
+    );
 
-  // 最新の分析結果
+  const stock = data.stock;
   const analysis = stock.analysisResults?.[0];
+  
+  // チャート用にデータを整形
+  const chartData = stock.financials?.map(f => ({
+    ...f,
+    date: f.periodEnd || `${f.fiscalYear}-Q${f.quarter}`
+  })) || [];
+
+  // ステータス色設定
+  const statusColor =
+    analysis?.status === "Strong Buy"
+      ? "bg-red-500 text-white"
+      : analysis?.status === "Buy"
+      ? "bg-orange-500 text-white"
+      : analysis?.status === "Buy (Spec)"
+      ? "bg-yellow-400 text-black border-dashed border-black"
+      : analysis?.status === "Avoid"
+      ? "bg-gray-800 text-white"
+      : analysis?.status === "Sell"
+      ? "bg-blue-600 text-white"
+      : "bg-gray-200 text-gray-600";
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8 pb-20">
-      {/* 🔙 ナビゲーション */}
-      <nav className="mb-6 flex items-center text-sm text-gray-500 hover:text-blue-600 transition-colors">
-        <Link href="/">← 銘柄一覧に戻る</Link>
-      </nav>
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+          <Link
+            href="/"
+            className="text-gray-500 hover:text-blue-600 text-sm font-bold flex items-center gap-1"
+          >
+            ← Back
+          </Link>
+          <h1 className="text-lg font-black tracking-tighter text-gray-800">
+            {stock.code} <span className="font-normal text-gray-400">|</span>{" "}
+            {stock.name}
+          </h1>
+        </div>
+      </header>
 
-      <div className="max-w-6xl mx-auto space-y-8">
-        {/* 🏷️ ヒーローセクション (社名・株価・判定) */}
-        <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between gap-6 relative overflow-hidden">
-          {/* 背景装飾 */}
-          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -z-0 opacity-50"></div>
-
-          <div className="relative z-10">
-            <div className="flex flex-wrap gap-2 mb-3">
-              <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-mono font-bold tracking-wider">
-                {stock.code}
-              </span>
-              <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-medium border border-blue-100">
+      <main className="max-w-4xl mx-auto px-4 mt-8 space-y-8">
+        {/* 1. ヒーローセクション */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <div className="flex gap-2 mb-2">
+              <span className="bg-gray-100 text-gray-500 text-xs px-2 py-1 rounded font-bold">
                 {stock.market}
               </span>
-              <span className="bg-gray-50 text-gray-600 px-2 py-1 rounded text-xs border border-gray-100">
+              <span className="bg-gray-100 text-gray-500 text-xs px-2 py-1 rounded font-bold">
                 {stock.sector}
               </span>
             </div>
-            <h1 className="text-3xl md:text-5xl font-extrabold text-gray-900 mb-2 tracking-tight">
+            <h2 className="text-3xl font-extrabold text-gray-900 leading-tight">
               {stock.name}
-            </h1>
-            <div className="flex items-baseline gap-2 mt-2">
-              <span className="text-4xl font-bold text-gray-900">
-                {analysis?.stockPrice?.toLocaleString() ?? "-"}
-              </span>
-              <span className="text-sm text-gray-500 font-medium">JPY</span>
+            </h2>
+            <div className="text-2xl font-mono font-bold mt-1">
+              ¥{analysis?.stockPrice?.toLocaleString() ?? "---"}
             </div>
           </div>
 
-          {/* 右側: 判定バッジ */}
-          <div className="relative z-10 flex flex-col items-start md:items-end justify-center min-w-[200px]">
-            <div
-              className={`px-6 py-3 rounded-xl text-xl font-bold text-white shadow-lg tracking-wide
-                ${
-                  analysis?.status === "Strong Buy"
-                    ? "bg-gradient-to-r from-red-600 to-rose-500 ring-4 ring-red-50"
-                    : analysis?.status === "Buy"
-                      ? "bg-gradient-to-r from-orange-500 to-amber-500"
-                      : analysis?.status === "Good"
-                        ? "bg-emerald-500"
-                        : "bg-gray-400"
-                }`}
-            >
-              {analysis?.status || "Unknown"}
-            </div>
-            {analysis?.isGoodBuy && (
-              <div className="mt-3 flex items-center gap-1.5 bg-red-50 text-red-600 px-3 py-1 rounded-full text-xs font-bold animate-pulse border border-red-100">
-                <span>🚀 AI買いシグナル点灯</span>
-              </div>
-            )}
-            <div className="mt-2 text-xs text-gray-400">
-              時価総額: {formatCurrency(analysis?.marketCap)}
-            </div>
+          <div
+            className={`px-6 py-3 rounded-xl flex flex-col items-center justify-center min-w-[140px] ${statusColor}`}
+          >
+            <span className="text-xs uppercase font-bold opacity-80 mb-1">
+              AI Verdict
+            </span>
+            <span className="text-xl font-black whitespace-nowrap">
+              {analysis?.status ?? "N/A"}
+            </span>
           </div>
         </div>
 
-        {/* 📊 分析スコアカード (3つのレンズ) */}
-        {analysis ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Lens 1: Safety */}
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center gap-2 mb-4 border-b border-gray-100 pb-3">
-                <span className="text-xl">🛡️</span>
-                <h3 className="font-bold text-gray-700">安全性 (Safety)</h3>
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-gray-400 font-medium uppercase">
-                  Altman Z-Score
+        {/* 2. TradingView Chart */}
+        <TradingViewWidget code={stock.code} />
+
+        {/* 3. AI 4層診断 & Reality Gap */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Left: 4層診断 */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-4">
+            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">
+              AI Diagnostic Report
+            </h3>
+
+            {/* Layer 1: State */}
+            <div className="flex items-center justify-between border-b border-gray-50 pb-3">
+              <span className="text-sm text-gray-500">1. Corporate State</span>
+              <span className="font-bold text-gray-800">
+                {analysis?.state ?? "Unknown"}
+              </span>
+            </div>
+
+            {/* Layer 2: Expectation */}
+            <div className="flex items-center justify-between border-b border-gray-50 pb-3">
+              <span className="text-sm text-gray-500">
+                2. Market Expectation
+              </span>
+              <span
+                className={`font-bold ${
+                  analysis?.expectationStructure === "Underestimated"
+                    ? "text-green-600"
+                    : analysis?.expectationStructure === "Overheated"
+                    ? "text-red-500"
+                    : "text-gray-800"
+                }`}
+              >
+                {analysis?.expectationStructure ?? "Neutral"}
+              </span>
+            </div>
+
+            {/* Layer 3: Risk */}
+            <div className="flex items-center justify-between border-b border-gray-50 pb-3">
+              <span className="text-sm text-gray-500">3. Risk Level</span>
+              <div className="text-right">
+                <span
+                  className={`font-bold px-2 py-0.5 rounded text-xs ${
+                    analysis?.riskLevel === "Critical"
+                      ? "bg-red-100 text-red-600"
+                      : analysis?.riskLevel === "High"
+                      ? "bg-orange-100 text-orange-600"
+                      : "bg-green-100 text-green-700"
+                  }`}
+                >
+                  {analysis?.riskLevel ?? "Low"}
                 </span>
-                <div className="flex items-baseline gap-2">
-                  <span
-                    className={`text-3xl font-bold ${
-                      (analysis.zScore ?? 0) > 2.99
-                        ? "text-blue-600"
-                        : (analysis.zScore ?? 0) < 1.8
-                          ? "text-red-500"
-                          : "text-yellow-600"
-                    }`}
-                  >
-                    {formatNumber(analysis.zScore)}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                  倒産リスクを示す指標。3.0以上なら財務は非常に健全。1.8以下は危険水域。
-                </p>
+                {analysis?.riskDetails && (
+                  <div className="text-[10px] text-red-500 mt-1">
+                    {analysis.riskDetails}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Lens 2: Structure */}
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center gap-2 mb-4 border-b border-gray-100 pb-3">
-                <span className="text-xl">💎</span>
-                <h3 className="font-bold text-gray-700">収益構造 (Quality)</h3>
+            {/* Layer 4: AI Summary */}
+            <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800 leading-relaxed mt-2">
+              <span className="font-bold mr-1">🤖 AI Summary:</span>
+              {analysis?.aiSummary ?? "分析データが不足しています。"}
+            </div>
+          </div>
+
+          {/* Right: Reality Gap Meter & Metrics */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col gap-6">
+            {/* Reality Gap Meter */}
+            <div>
+              <div className="flex justify-between items-end mb-2">
+                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+                  Reality Gap
+                </h3>
+                <span className="text-xs text-gray-400">期待 vs 現実</span>
               </div>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-xs text-gray-500 font-medium">
-                      Gross Profitability
+
+              {analysis?.expectationGap != null ? (
+                <div className="py-2">
+                  <div className="flex justify-between text-xs font-mono text-gray-500 mb-2">
+                    <span>
+                      Actual:{" "}
+                      <strong>
+                        {analysis.actualRevenueGrowth?.toFixed(1)}%
+                      </strong>
                     </span>
-                    <span className="text-lg font-bold text-gray-800">
-                      {formatNumber(analysis.grossProfitability)}
+                    <span>
+                      Implied:{" "}
+                      <strong>
+                        {analysis.impliedRevenueGrowth?.toFixed(1)}%
+                      </strong>
                     </span>
                   </div>
-                  <div className="w-full bg-gray-100 rounded-full h-1.5">
+
+                  <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden w-full">
+                    <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-gray-300 z-10"></div>
                     <div
-                      className="bg-blue-500 h-1.5 rounded-full"
+                      className={`absolute top-0 bottom-0 transition-all duration-500 ${
+                        analysis.expectationGap > 0
+                          ? "bg-red-400 left-1/2"
+                          : "bg-green-500 right-1/2"
+                      }`}
                       style={{
                         width: `${Math.min(
-                          (analysis.grossProfitability ?? 0) * 100,
-                          100,
+                          Math.abs(analysis.expectationGap),
+                          50
                         )}%`,
+                        ...(analysis.expectationGap < 0
+                          ? { right: "50%", left: "auto" }
+                          : {}),
                       }}
                     ></div>
                   </div>
-                </div>
-                <div className="flex justify-between items-center pt-2">
-                  <span className="text-xs text-gray-500 font-medium">
-                    Piotroski F-Score
-                  </span>
-                  <span className="text-lg font-bold text-gray-800">
-                    {analysis.fScore}{" "}
-                    <span className="text-xs text-gray-400 font-normal">
-                      / 9
-                    </span>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Lens 3: Value (Expectations MRI) */}
-            <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center gap-2 mb-4 border-b border-gray-100 pb-3">
-                <span className="text-xl">⚖️</span>
-                <h3 className="font-bold text-gray-700">
-                  期待値MRI (Valuation)
-                </h3>
-              </div>
-
-              <div className="flex flex-col gap-4">
-                {/* 1. FCFベース (現実) */}
-                <div>
-                  <div className="flex justify-between items-end mb-1">
-                    <span className="text-xs text-gray-500 font-bold">
-                      FCF逆算成長率
-                    </span>
+                  <div className="text-center font-bold mt-1 text-sm">
+                    Gap:{" "}
                     <span
-                      className={`text-lg font-bold ${analysis.impliedGrowthRate === null ? "text-gray-400" : "text-gray-800"}`}
+                      className={
+                        analysis.expectationGap > 0
+                          ? "text-red-500"
+                          : "text-green-600"
+                      }
                     >
-                      {analysis.impliedGrowthRate
-                        ? `${analysis.impliedGrowthRate.toFixed(1)}%`
-                        : "算出不能"}
+                      {analysis.expectationGap > 0 ? "+" : ""}
+                      {analysis.expectationGap.toFixed(1)}%
                     </span>
                   </div>
-                  <p className="text-[10px] text-gray-400">
-                    ※ 現在のキャッシュフローを基準とした期待値
-                  </p>
                 </div>
-
-                {/* 2. 売上ベース (夢・ストーリー) */}
-                <div className="pt-3 border-t border-dashed border-gray-200">
-                  <div className="flex justify-between items-end mb-1">
-                    <span className="text-xs text-blue-600 font-bold">
-                      売上逆算成長率 (PSR)
-                    </span>
-                    <span className="text-xl font-bold text-blue-700">
-                      {analysis.impliedRevenueGrowth
-                        ? `${analysis.impliedRevenueGrowth.toFixed(1)}%`
-                        : "-"}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-gray-400 mb-2">
-                    ※ 業界平均の利益率を達成すると仮定した場合の期待値
-                  </p>
-
-                  {/* 解釈 (Interpretation) */}
-                  {analysis.impliedRevenueGrowth && (
-                    <div className="bg-blue-50 px-3 py-2 rounded text-xs text-blue-800 font-medium">
-                      💡 市場は
-                      {analysis.impliedRevenueGrowth < 5
-                        ? "「安定・成熟」"
-                        : analysis.impliedRevenueGrowth < 15
-                          ? "「堅実な成長」"
-                          : analysis.impliedRevenueGrowth < 30
-                            ? "「高成長」"
-                            : "「超・高成長(熱狂)」"}
-                      を織り込んでいます。
-                    </div>
-                  )}
+              ) : (
+                <div className="text-sm text-gray-400 bg-gray-50 p-4 rounded text-center">
+                  Data Not Available
                 </div>
-                {/* Reality Gap Detector */}
-                <div className="mt-4 pt-4 border-t border-dashed border-gray-200">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-bold text-gray-500">
-                      Expectation Reality Gap
-                    </span>
-                    <span className="text-xs text-gray-400">期待乖離度</span>
-                  </div>
+              )}
+            </div>
 
-                  {analysis.expectationGap != null ? (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span>
-                          実績成長:{" "}
-                          <span className="font-mono">
-                            {analysis.actualRevenueGrowth?.toFixed(1)}%
-                          </span>
-                        </span>
-                        <span>vs</span>
-                        <span>
-                          市場期待:{" "}
-                          <span className="font-mono">
-                            {analysis.impliedRevenueGrowth?.toFixed(1)}%
-                          </span>
-                        </span>
-                      </div>
-
-                      {/* バー表示 */}
-                      <div className="w-full bg-gray-100 rounded-full h-2.5 relative overflow-hidden">
-                        {/* 0地点マーカー */}
-                        <div className="absolute left-1/2 top-0 bottom-0 w-0.5 bg-gray-300 z-10"></div>
-
-                        {/* 乖離バー */}
-                        <div
-                          className={`h-2.5 rounded-full ${
-                            analysis.expectationGap > 0
-                              ? "bg-red-400"
-                              : "bg-green-500"
-                          }`}
-                          style={{
-                            width: `${Math.min(Math.abs(analysis.expectationGap), 50)}%`, // 50%でカンスト
-                            marginLeft:
-                              analysis.expectationGap > 0
-                                ? "50%"
-                                : `calc(50% - ${Math.min(Math.abs(analysis.expectationGap), 50)}%)`,
-                          }}
-                        ></div>
-                      </div>
-
-                      <div className="text-xs text-center mt-1 font-bold">
-                        {analysis.expectationGap > 20 ? (
-                          <span className="text-red-600">
-                            ⚠️ 過熱警戒 (Euphoria)
-                          </span>
-                        ) : analysis.expectationGap > 5 ? (
-                          <span className="text-orange-500">やや期待先行</span>
-                        ) : analysis.expectationGap < -20 ? (
-                          <span className="text-green-600">
-                            💎 激安放置 (Deep Value)
-                          </span>
-                        ) : analysis.expectationGap < -5 ? (
-                          <span className="text-green-500">
-                            💰 期待以下 (Opportunity)
-                          </span>
-                        ) : (
-                          <span className="text-gray-500">適正水準 (Fair)</span>
-                        )}
-                        <span className="ml-2 text-gray-400 font-mono">
-                          (Gap: {analysis.expectationGap > 0 ? "+" : ""}
-                          {analysis.expectationGap.toFixed(1)}%)
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-xs text-gray-400 text-center">
-                      データ不足により計算不可
-                    </div>
-                  )}
+            {/* Key Metrics Grid */}
+            <div className="grid grid-cols-2 gap-4 border-t border-gray-100 pt-4">
+              <div>
+                <div className="text-[10px] text-gray-400 uppercase font-bold">
+                  Z-Score
+                </div>
+                <div
+                  className={`text-xl font-bold ${
+                    (analysis?.zScore ?? 0) < 1.8
+                      ? "text-red-500"
+                      : "text-gray-800"
+                  }`}
+                >
+                  {analysis?.zScore?.toFixed(2) ?? "-"}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-gray-400 uppercase font-bold">
+                  F-Score
+                </div>
+                <div className="text-xl font-bold text-gray-800">
+                  {analysis?.fScore ?? "-"}{" "}
+                  <span className="text-xs text-gray-400 font-normal">
+                    / 9
+                  </span>
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-gray-400 uppercase font-bold">
+                  Gross Profitability
+                </div>
+                <div className="text-xl font-bold text-blue-600">
+                  {analysis?.grossProfitability
+                    ? `${(analysis.grossProfitability * 100).toFixed(0)}%`
+                    : "-"}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] text-gray-400 uppercase font-bold">
+                  Implied Growth
+                </div>
+                <div className="text-xl font-bold text-gray-800">
+                  {analysis?.impliedGrowthRate
+                    ? `${analysis.impliedGrowthRate.toFixed(1)}%`
+                    : "N/A"}
                 </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-6 py-4 rounded-xl">
-            ⚠️ 分析データがまだありません。バックエンドで `fetch_data`
-            を実行してください。
-          </div>
-        )}
-
-        {/* 📝 企業概要 & AIサマリー */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-              📄 企業概要
-            </h3>
-            <p className="text-sm text-gray-600 leading-relaxed">
-              {stock.description || "情報がありません。"}
-            </p>
-          </div>
-
-          <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-6 rounded-xl border border-blue-100 shadow-sm">
-            <h3 className="font-bold text-indigo-900 mb-4 flex items-center gap-2">
-              🤖 AI分析サマリー
-            </h3>
-            {analysis?.aiSummary ? (
-              <p className="text-sm text-indigo-800 leading-relaxed whitespace-pre-wrap">
-                {analysis.aiSummary}
-              </p>
-            ) : (
-              <div className="text-sm text-indigo-400 italic py-4 text-center">
-                AIによる分析コメントはまだ生成されていません。
-                <br />
-                <span className="text-xs opacity-75">(今後実装予定)</span>
-              </div>
-            )}
           </div>
         </div>
 
-        {/* 📊 財務データ (チャート + テーブル) */}
+        {/* 4. 財務データ (チャート + テーブル) */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
             <h3 className="font-bold text-gray-800">業績推移</h3>
@@ -367,13 +326,13 @@ export default async function StockDetailPage({
           </div>
 
           <div className="p-6">
-            {/* ▼▼▼ 追加: グラフ表示エリア ▼▼▼ */}
+            {/* グラフ */}
             <div className="mb-8">
               <h4 className="text-xs font-bold text-gray-500 mb-4 uppercase tracking-wider">
                 Chart: Revenue & Operating Income
               </h4>
-              {stock.financials && stock.financials.length > 0 ? (
-                <StockFinancialChart data={stock.financials} />
+              {chartData.length > 0 ? (
+                <StockFinancialChart data={chartData} />
               ) : (
                 <div className="h-64 bg-gray-50 rounded-lg flex items-center justify-center text-gray-400">
                   チャートデータがありません
@@ -381,7 +340,7 @@ export default async function StockDetailPage({
               )}
             </div>
 
-            {/* テーブル表示エリア */}
+            {/* テーブル */}
             <div className="overflow-x-auto">
               <h4 className="text-xs font-bold text-gray-500 mb-4 uppercase tracking-wider">
                 Detailed Data
@@ -398,16 +357,13 @@ export default async function StockDetailPage({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {stock.financials?.map((f, i) => (
+                  {stock.financials?.map((f: FinancialData, i: number) => (
                     <tr
                       key={i}
                       className="hover:bg-blue-50/30 transition-colors"
                     >
                       <td className="px-6 py-4 font-mono font-medium text-gray-600">
-                        {f.fiscalYear}{" "}
-                        <span className="text-xs text-gray-400">
-                          Q{f.quarter}
-                        </span>
+                        {f.periodEnd}
                       </td>
                       <td className="px-6 py-4 text-right">
                         {formatCurrency(f.revenue)}
@@ -431,7 +387,7 @@ export default async function StockDetailPage({
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
