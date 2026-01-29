@@ -207,6 +207,30 @@ class AnalysisResult(BaseModel):
     # 例: "Bankruptcy Risk, Earnings Manipulation"
     risk_details = models.TextField(null=True, blank=True)
 
+    # ▼▼▼ 追加: 10種の性格診断タグ (Character Tags) ▼▼▼
+    # これらは検索・フィルタリングを高速化するためのフラグです
+
+    # 1. 安全 (Safety)
+    tag_safety_shield = models.BooleanField("盤石の盾", default=False)
+    tag_cash_cow = models.BooleanField("キャッシュ製造機", default=False)
+
+    # 2. 質 (Quality)
+    tag_quality_growth = models.BooleanField("クオリティ・グロース", default=False)
+    tag_institutional = models.BooleanField("プロ好み", default=False)
+
+    # 3. 成長・投機 (Growth/Spec)
+    tag_single_engine = models.BooleanField("片肺飛行", default=False)
+    tag_high_volatility = models.BooleanField("ボラ覚悟", default=False)
+
+    # 4. 改善 (Improvement)
+    tag_silent_improver = models.BooleanField("静かなる改善", default=False)
+    tag_turnaround = models.BooleanField("復活の兆し", default=False)
+
+    # 5. リスク (Risk)
+    tag_zombie = models.BooleanField("ゾンビ企業", default=False)
+    tag_accounting_risk = models.BooleanField("会計リスク", default=False)
+    tag_fragile = models.BooleanField("前提崩壊リスク", default=False)
+
     class Meta:
         ordering = ["-created_at"]  # BaseModelのcreated_atを使用
         get_latest_by = "created_at"

@@ -57,6 +57,50 @@ class Query:
                 # 強い順に並べる（statusをカスタムソートするのはDB的に重いので、Zスコア×割安度などでソートしても良いが、一旦Fスコア順などで代用）
                 qs = qs.order_by("-analysis_results__f_score")
 
+            # === 市場期待 ===
+            elif ranking_mode == "gap_opportunities":  # 割安放置
+                qs = qs.filter(analysis_results__expectation_gap__lt=0)
+                qs = qs.order_by("analysis_results__expectation_gap")
+
+            # === 成長・投機 ===
+            elif ranking_mode == "single_engine":  # 夢株
+                qs = qs.filter(analysis_results__tag_single_engine=True)
+                qs = qs.order_by("-analysis_results__actual_revenue_growth")
+
+            # === 安全・質 ===
+            elif ranking_mode == "safety_shield":  # 盤石の盾
+                qs = qs.filter(analysis_results__tag_safety_shield=True)
+                qs = qs.order_by("-analysis_results__z_score")
+
+            elif ranking_mode == "quality_growth":  # 王道
+                qs = qs.filter(analysis_results__tag_quality_growth=True)
+                qs = qs.order_by("-analysis_results__gross_profitability")
+
+            # === 改善 ===
+            elif ranking_mode == "turnaround":  # 復活
+                qs = qs.filter(
+                    Q(analysis_results__tag_turnaround=True)
+                    | Q(analysis_results__tag_silent_improver=True)
+                )
+                qs = qs.order_by(
+                    "-analysis_results__expectation_gap"
+                )  # ギャップが大きい(期待されてない)順
+
+            # === 危険 ===
+            elif ranking_mode == "avoid":  # 危険
+                qs = qs.filter(
+                    Q(analysis_results__tag_zombie=True)
+                    | Q(analysis_results__tag_accounting_risk=True)
+                    | Q(analysis_results__tag_fragile=True)
+                )
+                qs = qs.order_by(
+                    "analysis_results__z_score"
+                )  # Zスコアが低い順（危険順）
+            # 🔢 3. ソート (ランキングモード以外の場合のフォールバック)
+            else:
+                if sort_by == "code":
+                    qs = qs.order_by("code")
+
         # 🔢 3. 通常ソート
         else:
             if sort_by == "status":

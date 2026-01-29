@@ -216,6 +216,7 @@ class Command(BaseCommand):
         def safe(val):
             return val if val is not None else 0.0
 
+        # 1. Inputデータ作成
         metrics_input = FinancialMetricsInput(
             revenue=safe(latest.revenue),
             operating_income=safe(latest.operating_income),
@@ -244,9 +245,10 @@ class Command(BaseCommand):
             prev_current_liabilities=safe(prev.current_liabilities),
             prev_inventory=safe(prev.inventory),
             prev_long_term_debt=safe(prev.long_term_debt),
-            sector=stock.sector or "Unknown",  # ★追加: セクターを渡す
+            sector=stock.sector or "Unknown",
         )
-        # ▼ 1. 指標計算 (重複を削除し、整理しました)
+
+        # 2. 基本指標計算
         f_score, f_reasons = FinancialCalculator.calculate_piotroski_f_score(
             metrics_input
         )
@@ -255,100 +257,42 @@ class Command(BaseCommand):
         gross_prof = FinancialCalculator.calculate_gross_profitability(metrics_input)
         roiic = FinancialCalculator.calculate_roiic(metrics_input)
 
-        # 2つの期待値
+        # 3. 期待値・成長計算
         implied_g_fcf = FinancialCalculator.calculate_implied_growth_rate(metrics_input)
         implied_g_rev = FinancialCalculator.calculate_implied_revenue_growth(
             metrics_input
         )
-
-        # ▼ 3. 現実(Actual)と乖離(Gap)を計算
         actual_g_rev = FinancialCalculator.calculate_actual_revenue_growth(
             metrics_input
         )
-
-        # ギャップ = 期待(PSR逆算) - 実績(YoY)
         gap = FinancialCalculator.calculate_reality_gap(implied_g_rev, actual_g_rev)
 
-        # ▼ 2. ステータス判定ロジック (統合修正版)
-        status = "Hold"
-        ai_summary_parts = []
-        is_good_buy = False
+        # 4. 4層診断 (State, Expectation, Risk)
+        z_zone = FinancialCalculator.classify_altman_zone(z_score if z_score else 0)
+        has_fcf = (metrics_input.operating_cf + metrics_input.investing_cf) > 0
 
-        # A. 倒産リスク判定 (最優先: 死ぬ会社は買わない)
-        if z_score is not None:
-            z_zone = FinancialCalculator.classify_altman_zone(z_score)
-            if z_zone == "distress":
-                status = "Sell"
-                ai_summary_parts.append(f"⚠️倒産警戒域(Z:{z_score:.2f})")
-            elif z_zone == "grey":
-                ai_summary_parts.append(f"倒産リスク予備軍(Z:{z_score:.2f})")
-
-        # B. 財務健全性判定
-        if f_score >= 6:  # 財務は優秀
-            # 既にSell (倒産リスク) でなければ判定へ
-            if status != "Sell":
-                # パターン1: 【王道】FCFが出ていて、割安 (Strong Buy)
-                if implied_g_fcf is not None and implied_g_fcf < 10:
-                    status = "Strong Buy"
-                    is_good_buy = True
-                    ai_summary_parts.append(f"財務盤石(Score:{f_score})かつFCF割安")
-
-                # パターン2: 【成長株】FCFはないが、売上成長期待が現実的 (Buy)
-                elif (
-                    implied_g_fcf is None
-                    and implied_g_rev is not None
-                    and implied_g_rev < 20
-                ):
-                    status = "Buy"
-                    is_good_buy = True
-                    ai_summary_parts.append(
-                        f"赤字だが売上期待値({implied_g_rev:.1f}%)は妥当"
-                    )
-
-                # パターン3: 【非対称の賭け】期待値が高くても、実績との乖離がマイナスなら買い (Buy)
-                # (例: 市場は30%成長を期待しているが、実は実績40%成長していて、まだ評価不足)
-                elif gap is not None and gap < -5:
-                    status = "Buy"
-                    is_good_buy = True
-                    ai_summary_parts.append(f"実力過小評価(乖離{gap:.1f}%)")
-
-                # パターン4: 良い企業だが、期待値が高すぎてGapもプラス (Watch)
-                else:
-                    status = "Watch"
-                    ai_summary_parts.append("優良企業だが市場の期待値が高い")
-
-        elif f_score <= 3:
-            status = "Sell"
-            ai_summary_parts.append(f"財務体質が悪化中(Score:{f_score})")
-
-        # 準備
-        has_fcf = implied_g_fcf is not None
-        z_zone = (
-            FinancialCalculator.classify_altman_zone(z_score) if z_score else "grey"
-        )
-
-        # 1. State (状態)
         state = FinancialCalculator.diagnose_corporate_state(f_score, z_zone, has_fcf)
-
-        # 2. Expectation (期待)
         expectation = FinancialCalculator.diagnose_expectation(
             gap, implied_g_rev, has_fcf
         )
-
-        # 3. Risk (リスク)
-        risk_level, risk_factors = FinancialCalculator.assess_risks(
+        risk_lvl, risk_dtl_list = FinancialCalculator.assess_risks(
             z_zone, f_score, accruals
         )
-        risk_details_str = ", ".join(risk_factors)
+        risk_details_str = ", ".join(risk_dtl_list)
 
-        # 4. Final Label (最終判定)
+        # 5. ★性格タグ判定 (New!)
+        tags = FinancialCalculator.detect_character_tags(
+            metrics_input, z_score, f_score, actual_g_rev, gap
+        )
+
+        # 6. 総合判定 (Status & AI Summary)
+        # --- 既存ロジックの再利用 ---
         final_label = "Neutral"
         ai_summary_parts = []
-
-        # --- ロジックの適用 ---
+        is_good_buy = False
 
         # Rule 1: クリティカルなリスクがあれば、何があっても "Avoid"
-        if risk_level == "Critical":
+        if risk_lvl == "Critical":
             final_label = "Avoid"
             ai_summary_parts.append(f"⚠️回避推奨: {risk_details_str}")
 
@@ -375,14 +319,14 @@ class Command(BaseCommand):
         elif (
             state == "High Growth"
             and expectation == "Single Engine"
-            and risk_level == "Low"
+            and risk_lvl == "Low"
         ):
-            final_label = "Buy (Spec)"  # 投機的買い
+            final_label = "Buy (Spec)"
             is_good_buy = True
             ai_summary_parts.append("高成長への期待買い(ボラティリティ注意)")
 
         # Rule 6: それ以外の良い企業
-        elif state in ["Cash Generator", "High Growth"] and risk_level != "High":
+        elif state in ["Cash Generator", "High Growth"] and risk_lvl != "High":
             final_label = "Buy"
             is_good_buy = True
             ai_summary_parts.append("好財務かつ期待値も妥当")
@@ -391,12 +335,15 @@ class Command(BaseCommand):
             final_label = "Hold"
             ai_summary_parts.append("特筆すべき材料なし")
 
-        # 保存用サマリ作成
-        ai_summary = "。".join(ai_summary_parts)
+        # 追加情報としてタグの特徴もAIサマリーに含める
+        if tags["tag_safety_shield"]:
+            ai_summary_parts.append("【盤石の盾】")
+        if tags["tag_zombie"]:
+            ai_summary_parts.append("【ゾンビ企業警戒】")
 
         ai_summary = "。".join(ai_summary_parts)
 
-        # ▼ 3. DB保存 (重複キーを削除)
+        # 7. DB保存
         AnalysisResult.objects.update_or_create(
             stock=stock,
             financial_statement=latest,
@@ -408,25 +355,34 @@ class Command(BaseCommand):
                 "accruals_ratio": accruals,
                 "gross_profitability": gross_prof,
                 "roiic": roiic,
-                # FCFベース (既存)
                 "implied_growth_rate": implied_g_fcf,
-                # 売上ベース (新規)
                 "implied_revenue_growth": implied_g_rev,
-                "status": final_label,  # 従来のstatusカラムに詳細ラベルを入れる
-                "state": state,  # ★新規
-                "expectation_structure": expectation,  # ★新規
-                "risk_level": risk_level,  # ★新規
-                "risk_details": risk_details_str,  # ★新規
-                "is_good_buy": is_good_buy,
-                "ai_summary": ai_summary,
-                # ▼ 追加保存
                 "actual_revenue_growth": actual_g_rev,
                 "expectation_gap": gap,
+                "status": final_label,
+                "state": state,
+                "expectation_structure": expectation,
+                "risk_level": risk_lvl,
+                "risk_details": risk_details_str,
+                "is_good_buy": is_good_buy,
+                "ai_summary": ai_summary,
+                # ▼▼▼ タグ保存 (ここが重要！) ▼▼▼
+                "tag_safety_shield": tags["tag_safety_shield"],
+                "tag_cash_cow": tags["tag_cash_cow"],
+                "tag_quality_growth": tags["tag_quality_growth"],
+                "tag_institutional": tags["tag_institutional"],
+                "tag_single_engine": tags["tag_single_engine"],
+                "tag_high_volatility": tags["tag_high_volatility"],
+                "tag_silent_improver": tags["tag_silent_improver"],
+                "tag_turnaround": tags["tag_turnaround"],
+                "tag_zombie": tags["tag_zombie"],
+                "tag_accounting_risk": tags["tag_accounting_risk"],
+                "tag_fragile": tags["tag_fragile"],
             },
         )
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Analyzed {stock.name}: [{final_label}] State={state}, Exp={expectation}, Risk={risk_level}"
+                f"Analyzed {stock.name}: [{final_label}] State={state}, Exp={expectation}, Tags={[k for k, v in tags.items() if v]}"
             )
         )
