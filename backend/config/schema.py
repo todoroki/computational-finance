@@ -15,6 +15,7 @@ class Query:
         status: Optional[str] = None,
         ranking_mode: Optional[str] = None,
         limit: int = 100,
+        offset: int = 0,  # ★ページネーション用
         sort_by: Optional[str] = "code",
         sort_order: Optional[str] = "asc",
     ) -> List[StockType]:
@@ -23,7 +24,11 @@ class Query:
 
         # 🔍 1. 検索 & フィルタ
         if search:
-            qs = qs.filter(Q(code__icontains=search) | Q(name__icontains=search))
+            qs = qs.filter(
+                Q(code__icontains=search)
+                | Q(name__icontains=search)
+                | Q(japanese_name__icontains=search)  # ★追加
+            )
 
         if status:
             # ▼▼▼ 修正点2: フィルタも 'analysis_results' を使う
@@ -45,6 +50,13 @@ class Query:
                     analysis_results__implied_revenue_growth__gte=20,
                 ).order_by("-analysis_results__implied_revenue_growth")
 
+            # ★追加: 単純な「AI推奨順」
+            elif ranking_mode == "strong_buy":
+                # Strong Buy を優先的に出す（簡易実装としてステータス指定も可だが、ここではロジックで）
+                qs = qs.filter(analysis_results__status__in=["Strong Buy", "Buy"])
+                # 強い順に並べる（statusをカスタムソートするのはDB的に重いので、Zスコア×割安度などでソートしても良いが、一旦Fスコア順などで代用）
+                qs = qs.order_by("-analysis_results__f_score")
+
         # 🔢 3. 通常ソート
         else:
             if sort_by == "status":
@@ -63,6 +75,8 @@ class Query:
                         output_field=IntegerField(),
                     )
                 ).order_by(f"{'-' if sort_order == 'desc' else ''}status_rank")
+            elif sort_by == "code":
+                qs = qs.order_by("code")
 
             elif sort_by == "z_score":
                 prefix = "-" if sort_order == "desc" else ""
@@ -81,7 +95,8 @@ class Query:
                 qs = qs.order_by(f"{prefix}code")
 
         # ✂️ 4. 件数制限
-        return qs[:limit]
+        # return qs[:limit]
+        return qs[offset : offset + limit]
 
     @strawberry.field
     def stock(self, code: str) -> Optional[StockType]:

@@ -3,6 +3,7 @@ query GetStocks(
   $status: String
   $rankingMode: String # ★追加
   $limit: Int
+  $offset: Int
   $sortBy: String
   $sortOrder: String
 ) {
@@ -11,6 +12,7 @@ query GetStocks(
     status: $status
     rankingMode: $rankingMode # ★追加
     limit: $limit
+    offset: $offset
     sortBy: $sortBy # ★追加
     sortOrder: $sortOrder # ★追加
   ) {
