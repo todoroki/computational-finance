@@ -281,7 +281,7 @@ class Command(BaseCommand):
         risk_details_str = ", ".join(risk_dtl_list)
 
         # 5. ★性格タグ判定 (New!)
-        tags = FinancialCalculator.detect_character_tags(
+        tags, primary_tag = FinancialCalculator.detect_character_tags(
             metrics_input, z_score, f_score, actual_g_rev, gap
         )
 
@@ -290,6 +290,8 @@ class Command(BaseCommand):
         final_label = "Neutral"
         ai_summary_parts = []
         is_good_buy = False
+
+        ai_summary_parts.append(f"【{primary_tag}】")
 
         # Rule 1: クリティカルなリスクがあれば、何があっても "Avoid"
         if risk_lvl == "Critical":

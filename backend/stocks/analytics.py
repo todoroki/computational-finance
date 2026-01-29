@@ -29,6 +29,7 @@ class FinancialMetricsInput:
 
     # CF (キャッシュフロー計算書)
     operating_cf: float
+    # investing_cf: 将来の Growth Investment 分解用 (現時点では未使用だが拡張性のため保持)
     investing_cf: float
     capex: float  # Capital Expenditure (Reinvestment Rate用)
 
@@ -115,12 +116,11 @@ class FinancialCalculator:
             < 1.5: 危険 (稼ぎが利払いで消える)
             1.5 - 3.0: 警戒
             > 5.0: 安全
+            inf: 無借金 (最強)
         """
-        # interest_expenseは通常正の値で入ってくる想定だが、符号に注意
-        # yfinanceでは負の値(支出)として入ることもあるため絶対値をとるのが安全
         interest = abs(data.interest_expense)
         if interest == 0:
-            return None  # 無借金に近い、またはデータなし
+            return float("inf")  # 無借金に近い場合は無限大として扱う
 
         return data.ebit / interest
 
@@ -228,12 +228,15 @@ class FinancialCalculator:
         if delta_invested_capital <= 0:
             # 資本を減らして利益が増えたなら、効率性は無限大（素晴らしい）
             if delta_op_income > 0:
-                return 100.0  # 上限値として100% (便宜上)
+                # 100%は異常値に見えるため、50%でキャップして「高効率」であることを示す
+                return 0.50
             # 資本も減って利益も減ったなら、単なる縮小均衡
             else:
                 return None
 
-        return delta_op_income / delta_invested_capital
+        # 異常値除外のため、ここでも50%でキャップする
+        raw_roiic = delta_op_income / delta_invested_capital
+        return min(raw_roiic, 0.50)
 
     @staticmethod
     def calculate_reinvestment_rate(data: FinancialMetricsInput) -> Optional[float]:
@@ -467,8 +470,9 @@ class FinancialCalculator:
         try:
             base_val = psr * (r - g_term) / target_margin
 
-            if base_val < 0:
-                return 0.0
+            # 計算不能 (マイナスの場合は前提崩壊としてNoneを返す)
+            if base_val <= 0:
+                return None
 
             implied_g = (base_val ** (1 / 5)) - 1
             return implied_g * 100  # %表記
@@ -509,16 +513,17 @@ class FinancialCalculator:
         return implied_growth - actual_growth
 
     @staticmethod
-    def diagnose_corporate_state(f_score, z_zone, has_fcf) -> str:
+    def diagnose_corporate_state(f_score, z_zone, fcf_state) -> str:
         """
         【第1層】企業の状態診断 (State)
+        fcf_state: "Positive" | "Negative" | "Strong"
         """
         if z_zone == "distress":
             return "Financial Distress"  # 財務危機
         elif f_score <= 3:
             return "Deteriorating"  # 悪化中
         elif f_score >= 5:  # 少し緩和
-            if has_fcf:
+            if fcf_state in ["Positive", "Strong"]:
                 return "Cash Generator"  # 稼ぐ力あり (Compounder)
             else:
                 return "High Growth"  # 成長投資中 (Growth)
@@ -526,12 +531,17 @@ class FinancialCalculator:
             return "Neutral"  # 普通
 
     @staticmethod
-    def diagnose_expectation(gap, implied_rev_growth, has_fcf) -> str:
+    def diagnose_expectation(gap, implied_rev_growth, fcf_state) -> str:
         """
         【第2層】市場期待の構造診断 (Expectation)
         """
-        if not has_fcf and implied_rev_growth is not None and implied_rev_growth > 25:
-            return "Single Engine"  # 片肺飛行 (売上期待のみ)
+        # FCFが出ていないのに、高い成長期待がある場合 = 片肺飛行
+        if (
+            fcf_state == "Negative"
+            and implied_rev_growth is not None
+            and implied_rev_growth > 25
+        ):
+            return "Single Engine"
 
         if gap is not None:
             if gap > 20:
@@ -577,10 +587,11 @@ class FinancialCalculator:
         f_score: int,
         actual_rev_growth: Optional[float],
         expectation_gap: Optional[float],
-    ) -> Dict[str, bool]:
+    ) -> Tuple[Dict[str, bool], str]:
         """
         【性格診断（Character Tags）】
         相互排他・階層構造を意識したロジックへ修正。
+        戻り値: (Tags Dict, Primary Tag Name)
         """
         # --- 0. 下準備 & データ定義 ---
         z = z_score if z_score is not None else 0.0
@@ -660,6 +671,21 @@ class FinancialCalculator:
         # 条件: 超高Gap + 低Zスコア + FCFマイナス (物語が崩れたら即死)
         tag_fragile = (gap > 30) and (z < 1.8) and (core_fcf < 0)
 
+        # --- ★スコアリングによるPrimary判定 (新機能) ---
+        # 複数のタグがついた場合に「どれがこの銘柄の顔か」を決める
+        scores = {
+            "Safety Shield": int(tag_safety_shield) * 3 + int(tag_institutional),
+            "Quality Growth": int(tag_quality_growth) * 3 + int(tag_cash_cow),
+            "Speculative": int(tag_single_engine) * 2 + int(tag_high_volatility),
+            "Turnaround": int(tag_silent_improver) * 2 + int(tag_turnaround),
+            "Risk": int(tag_zombie) * 5
+            + int(tag_fragile) * 3
+            + int(tag_accounting_risk) * 2,
+        }
+
+        # スコアが最大のものをPrimaryとする (全て0ならNeutral)
+        primary_tag = max(scores, key=scores.get) if any(scores.values()) else "Neutral"
+
         return {
             "tag_safety_shield": tag_safety_shield,
             "tag_cash_cow": tag_cash_cow,
@@ -672,4 +698,4 @@ class FinancialCalculator:
             "tag_zombie": tag_zombie,
             "tag_accounting_risk": tag_accounting_risk,
             "tag_fragile": tag_fragile,
-        }
+        }, primary_tag
