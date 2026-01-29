@@ -65,17 +65,28 @@ class FinancialCalculator:
         【Altman Z-Score】
         倒産リスクを予測する指標。
         Formula: 1.2A + 1.4B + 3.3C + 0.6D + 1.0E
+
+        NOTE: 銀行や金融業の場合、BS構造が特殊なため適用除外とする。
         """
+        # セクター除外ロジック
+        exclude_keywords = ["Bank", "Financial", "Insurance"]
+        if any(k in data.sector for k in exclude_keywords):
+            return None
+
         if not data.total_assets or not data.current_liabilities:
             return None
 
         working_capital = data.current_assets - data.current_liabilities
         total_liabilities = data.long_term_debt + data.current_liabilities
 
+        # 分母が0の場合のガード
+        if data.total_assets == 0 or total_liabilities == 0:
+            return None
+
         A = working_capital / data.total_assets
         B = data.retained_earnings / data.total_assets
         C = data.ebit / data.total_assets
-        D = data.market_cap / total_liabilities if total_liabilities > 0 else 0
+        D = data.market_cap / total_liabilities
         E = data.revenue / data.total_assets
 
         return 1.2 * A + 1.4 * B + 3.3 * C + 0.6 * D + 1.0 * E
@@ -213,8 +224,14 @@ class FinancialCalculator:
         delta_op_income = data.operating_income - data.prev_operating_income
         delta_invested_capital = data.total_assets - data.prev_total_assets
 
+        # 資本減少時のハンドリング修正
         if delta_invested_capital <= 0:
-            return None
+            # 資本を減らして利益が増えたなら、効率性は無限大（素晴らしい）
+            if delta_op_income > 0:
+                return 100.0  # 上限値として100% (便宜上)
+            # 資本も減って利益も減ったなら、単なる縮小均衡
+            else:
+                return None
 
         return delta_op_income / delta_invested_capital
 
@@ -245,7 +262,6 @@ class FinancialCalculator:
         """
         【Dupont Analysis】
         ROE分解。
-        Formula: Profit Margin * Asset Turnover * Financial Leverage
         """
         if not data.total_equity or not data.total_assets or not data.revenue:
             return {}
@@ -253,7 +269,6 @@ class FinancialCalculator:
         return {
             "net_profit_margin": data.net_income / data.revenue,
             "asset_turnover": data.revenue / data.total_assets,
-            # 修正: net_assets -> total_equity
             "financial_leverage": data.total_assets / data.total_equity,
             "roe": data.net_income / data.total_equity,
         }
@@ -270,13 +285,16 @@ class FinancialCalculator:
     ) -> Optional[float]:
         """
         【Market-Implied Growth Rate (逆算DCF)】
-        今の株価が織り込む成長率。
+        今の株価が織り込む成長率。FCFベース。
         """
         if data.market_cap <= 0:
             return None
 
         cost_of_equity = risk_free_rate + (data.beta * market_risk_premium)
-        fcf = data.operating_cf + data.investing_cf
+
+        # 修正: FCF定義を厳密化 (OpCF - CapEx)
+        # CapExは負の値で入っていることを想定し abs で処理
+        fcf = data.operating_cf - abs(data.capex)
 
         if fcf <= 0:
             return None
@@ -561,83 +579,86 @@ class FinancialCalculator:
         expectation_gap: Optional[float],
     ) -> Dict[str, bool]:
         """
-        【性格診断】
-        計算済みのスコアと財務データから、10種類の性格タグを判定する。
+        【性格診断（Character Tags）】
+        相互排他・階層構造を意識したロジックへ修正。
         """
-        # デフォルト値の安全な取得
+        # --- 0. 下準備 & データ定義 ---
         z = z_score if z_score is not None else 0.0
         gap = expectation_gap if expectation_gap is not None else 0.0
         growth = actual_rev_growth if actual_rev_growth is not None else 0.0
 
-        # 補助指標の計算
         total_assets = data.total_assets or 1
         revenue = data.revenue or 1
 
-        # 自己資本比率
-        equity_ratio = (data.total_equity / total_assets) * 100
+        # 定義修正: FCF = OpCF - Capex (投資CF全体ではない)
+        core_fcf = data.operating_cf - abs(data.capex)
+        fcf_margin = (core_fcf / revenue) * 100
 
-        # 営業CFマージン
+        equity_ratio = (data.total_equity / total_assets) * 100
+        op_margin = (data.operating_income / revenue) * 100
         ocf_margin = (data.operating_cf / revenue) * 100
 
-        # 営業利益率
-        op_margin = (data.operating_income / revenue) * 100
-
-        # FCF (簡易: 営業CF + 投資CF)
-        fcf = data.operating_cf + data.investing_cf
-
-        # --- 判定ロジック ---
+        # --- Layer 1: 本質 (Safety / Quality) ---
 
         # 1. 🛡️ 盤石の盾 (Safety Shield)
-        # Z-Scoreが高く(ほぼ倒産なし)、自己資本比率が高い
-        tag_safety_shield = (z > 2.99) and (equity_ratio > 60)
+        # 条件: 倒産リスク皆無 + 高い自己資本比率 + FCF黒字
+        tag_safety_shield = (z > 2.99) and (equity_ratio > 60) and (core_fcf > 0)
 
-        # 2. 🧱 キャッシュ製造機 (Cash Cow)
-        # 営業CFマージンが高く、成長は低め (成熟企業)
-        tag_cash_cow = (ocf_margin > 15) and (growth < 10) and (fcf > 0)
-
-        # 3. 👑 クオリティ・グロース (Quality Growth)
-        # 高収益性(OP Margin > 10%) かつ 二桁成長
+        # 2. 👑 クオリティ・グロース (Quality Growth)
+        # 条件: 高収益 + 2桁成長 + 高い財務スコア
         tag_quality_growth = (op_margin > 10) and (growth > 10) and (f_score >= 6)
 
-        # 4. 🧠 プロ好み (Institutional Quality)
-        # 財務健全性が高く、利益率も安定している
+        # 3. 🧠 プロ好み (Institutional Quality)
+        # 条件: 安全域Z + 安定収益 + 高Fスコア
         tag_institutional = (z > 2.5) and (f_score >= 7) and (op_margin > 5)
 
+        # --- Layer 2: 性格 (Character / Phase) ---
+
+        # 4. 🧱 キャッシュ製造機 (Cash Cow)
+        # 条件: 高OCFマージン + 低成長 + FCF創出 (成熟企業)
+        tag_cash_cow = (ocf_margin > 15) and (growth < 10) and (core_fcf > 0)
+
         # 5. 🚀 片肺飛行 (Single Engine)
-        # 成長は高い(>20%)が、CFが出ていない or 財務が弱い
-        tag_single_engine = (growth > 20) and ((fcf < 0) or (z < 1.8))
+        # 条件: 高成長(20%+) だが FCFマージンが低い/マイナス (構造的特徴)
+        tag_single_engine = (growth > 20) and (fcf_margin < 5)
 
-        # 6. 🎢 ボラ覚悟 (High Volatility)
-        # 片肺飛行かつ、期待先行(Gap > 10%)
-        tag_high_volatility = tag_single_engine and (gap > 10)
-
-        # 7. 🌱 静かなる改善 (Silent Improver)
-        # 期待されていない(Gap < 0)が、前年比で改善している
+        # 6. 🌱 静かなる改善 (Silent Improver)
+        # 条件: 期待されていない(Gap<0) + 利益率改善 or Fスコア高
         is_improving = False
         if data.prev_revenue and data.prev_operating_income:
             prev_op_margin = (data.prev_operating_income / data.prev_revenue) * 100
-            # 利益率改善 or Fスコアが高い
             is_improving = (op_margin > prev_op_margin) or (f_score >= 6)
-
         tag_silent_improver = (gap < 0) and is_improving
 
-        # 8. 🔁 復活の兆し (Turnaround)
-        # 前期赤字 -> 今期黒字
+        # 7. 🔁 復活の兆し (Turnaround)
+        # 条件: 赤字脱却
         tag_turnaround = False
         if data.prev_net_income is not None:
             tag_turnaround = (data.prev_net_income < 0) and (data.net_income > 0)
 
-        # 9. 💀 ゾンビ企業 (Zombie)
-        # 財務危険水域(Z < 1.8) かつ 本業で稼げていない(営業赤字)
-        tag_zombie = (z < 1.8) and (data.operating_income < 0)
+        # --- Layer 3: 警告 (Warning / Risk) ---
+        # ※ 上位概念との重複を避けるロジック
 
-        # 10. 🧪 会計リスク (Accounting Risk)
-        # 純利益は出ているのに、営業CFがマイナス（粉飾の兆候 or 運転資金悪化）
+        # 8. 💀 ゾンビ企業 (Zombie)
+        # 条件: 利払い不能(ICR<1) または 財務危機的状況 + 稼げていない
+        # 新設: ICRチェック
+        icr = FinancialCalculator.calculate_interest_coverage(data)
+        is_zombie_financials = (z < 1.8) and (data.operating_income < 0)
+        is_interest_critical = (icr is not None) and (icr < 1.0)
+        tag_zombie = is_zombie_financials or is_interest_critical
+
+        # 9. 🧪 会計リスク (Accounting Risk)
+        # 条件: 黒字倒産予備軍 (純利益 > 0 だが 営業CF < 0)
         tag_accounting_risk = (data.net_income > 0) and (data.operating_cf < 0)
 
-        # 11. 🚨 前提崩壊リスク (Fragile)
-        # 超高Gap(>30%) かつ 財務脆弱
-        tag_fragile = (gap > 30) and (z < 1.8)
+        # 10. 🎢 ボラ覚悟 (High Volatility)
+        # 条件: Single Engine (高成長・低CF) かつ 期待過熱 (Gap > 10)
+        # ※ Single Engineのサブセット的な位置づけ
+        tag_high_volatility = tag_single_engine and (gap > 10)
+
+        # 11. 🚨 前提崩壊リスク (Fragile / Narrative Fragility)
+        # 条件: 超高Gap + 低Zスコア + FCFマイナス (物語が崩れたら即死)
+        tag_fragile = (gap > 30) and (z < 1.8) and (core_fcf < 0)
 
         return {
             "tag_safety_shield": tag_safety_shield,
