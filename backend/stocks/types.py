@@ -39,6 +39,19 @@ class AnalysisResultType:
     risk_level: str
     risk_details: str | None
 
+    # ▼▼▼ ここに追加！ (11個のタグ) ▼▼▼
+    tag_safety_shield: bool
+    tag_cash_cow: bool
+    tag_quality_growth: bool
+    tag_institutional: bool
+    tag_single_engine: bool
+    tag_high_volatility: bool
+    tag_silent_improver: bool
+    tag_turnaround: bool
+    tag_zombie: bool
+    tag_accounting_risk: bool
+    tag_fragile: bool
+
 
 # === 2. 財務データの型定義 ===
 @strawberry.django.type(FinancialStatement)

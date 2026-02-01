@@ -2,9 +2,12 @@ query GetStockDetail($code: String!) {
   stock(code: $code) {
     code
     name
-    sector
-    description
+    japaneseName
     market
+    japaneseMarket
+    sector
+    japaneseSector
+    description 
 
     analysisResults {
       date
@@ -31,14 +34,22 @@ query GetStockDetail($code: String!) {
       impliedRevenueGrowth # ★ 売上ベース
       actualRevenueGrowth # ★追加
       expectationGap # ★追加
-
-      state                 # 企業の健康状態
-      expectationStructure  # 期待の構造
-      riskLevel             # リスクレベル
-      riskDetails           # リスク詳細
-      
-      
-      
+      state # 企業の健康状態
+      expectationStructure # 期待の構造
+      riskLevel # リスクレベル
+      riskDetails # リスク詳細
+      # --- ▼▼▼ 追加: 性格タグ (キャメルケースに注意) ▼▼▼ ---
+      tagSafetyShield
+      tagCashCow
+      tagQualityGrowth
+      tagInstitutional
+      tagSingleEngine
+      tagHighVolatility
+      tagSilentImprover
+      tagTurnaround
+      tagZombie
+      tagAccountingRisk
+      tagFragile
     }
 
     financials {
