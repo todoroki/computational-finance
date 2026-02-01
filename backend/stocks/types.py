@@ -133,11 +133,14 @@ class PortfolioAnalysisType:
 # ▼▼▼ 追加: ポートフォリオ明細の型 ▼▼▼
 @strawberry.django.type(PortfolioItem)
 class PortfolioItemType:
-    stock: "StockType"  # 既存のStockTypeを参照
+    stock: "StockType"
     quantity: float
     average_price: float
     target_weight: float | None
     note: str | None
+
+    # ロジックをメソッド外に出すか、計算用ヘルパーを作るのが定石ですが、
+    # ここではシンプルに profit_loss 内でも計算するように修正します。
 
     @strawberry.field
     def current_value(self) -> float:
@@ -153,7 +156,19 @@ class PortfolioItemType:
     @strawberry.field
     def profit_loss(self) -> float:
         # 含み損益
-        return self.current_value() - (float(self.average_price) * float(self.quantity))
+        # 1. 現在価格を取得 (current_valueと同じロジック)
+        latest_analysis = self.stock.analysis_results.first()
+        price = (
+            latest_analysis.stock_price
+            if latest_analysis and latest_analysis.stock_price
+            else 0
+        )
+        current_val = float(price) * float(self.quantity)
+
+        # 2. 取得原価
+        cost_basis = float(self.average_price) * float(self.quantity)
+
+        return current_val - cost_basis
 
 
 # ▼▼▼ 追加: ポートフォリオ本体の型 ▼▼▼

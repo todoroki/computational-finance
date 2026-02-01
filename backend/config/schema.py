@@ -193,4 +193,5 @@ class Mutation:
         return portfolio
 
 
-schema = strawberry.Schema(query=Query)
+# schema = strawberry.Schema(query=Query)
+schema = strawberry.Schema(query=Query, mutation=Mutation)
