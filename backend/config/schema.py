@@ -2,8 +2,8 @@ from typing import List, Optional
 
 import strawberry
 from django.db.models import Case, IntegerField, Q, Value, When
-from stocks.models import Stock
-from stocks.types import StockType
+from stocks.models import Portfolio, PortfolioItem, Stock
+from stocks.types import PortfolioType, StockType
 
 
 @strawberry.type
@@ -145,6 +145,52 @@ class Query:
     @strawberry.field
     def stock(self, code: str) -> Optional[StockType]:
         return Stock.objects.filter(code=code).first()
+
+    # --- ▼▼▼ 新規追加: Portfolio Query ▼▼▼ ---
+    @strawberry.field
+    def my_portfolio(self, owner_id: str = "guest") -> Optional[PortfolioType]:
+        """
+        指定されたowner_idのポートフォリオを返す。
+        なければ自動作成する（MVP仕様）。
+        """
+        portfolio, _ = Portfolio.objects.get_or_create(
+            owner_id=owner_id, defaults={"name": "My Portfolio"}
+        )
+        return portfolio
+
+
+# --- ▼▼▼ 新規追加: Mutation (書き込み操作) ▼▼▼ ---
+@strawberry.type
+class Mutation:
+    @strawberry.mutation
+    def add_to_portfolio(
+        self, owner_id: str, stock_code: str, quantity: float, average_price: float
+    ) -> Optional[PortfolioType]:
+        """ポートフォリオに銘柄を追加（または更新）"""
+        portfolio, _ = Portfolio.objects.get_or_create(owner_id=owner_id)
+        stock = Stock.objects.get(code=stock_code)
+
+        # 既存なら更新、なければ作成
+        item, created = PortfolioItem.objects.update_or_create(
+            portfolio=portfolio,
+            stock=stock,
+            defaults={"quantity": quantity, "average_price": average_price},
+        )
+        return portfolio
+
+    @strawberry.mutation
+    def remove_from_portfolio(
+        self, owner_id: str, stock_code: str
+    ) -> Optional[PortfolioType]:
+        """ポートフォリオから銘柄を削除"""
+        portfolio = Portfolio.objects.filter(owner_id=owner_id).first()
+        if not portfolio:
+            return None
+
+        PortfolioItem.objects.filter(
+            portfolio=portfolio, stock__code=stock_code
+        ).delete()
+        return portfolio
 
 
 schema = strawberry.Schema(query=Query)

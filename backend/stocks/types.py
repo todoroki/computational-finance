@@ -1,8 +1,9 @@
 from typing import List, Optional
 
 import strawberry
+from strawberry.scalars import JSON
 
-from .models import AnalysisResult, FinancialStatement, Stock
+from .models import AnalysisResult, FinancialStatement, Portfolio, PortfolioItem, Stock
 
 
 # === 1. 分析結果の型定義 ===
@@ -114,3 +115,73 @@ class StockType:
 #     @strawberry.field
 #     def stock(self, code: str) -> Optional[StockType]:
 #         return Stock.objects.filter(code=code).first()
+
+
+# ▼▼▼ 追加: ポートフォリオ診断結果の型 ▼▼▼
+@strawberry.type
+class PortfolioAnalysisType:
+    total_value: float
+    health_score: int
+    diagnosis_summary: str
+
+    # 構造データは柔軟に扱えるようJSONとして返します
+    category_exposure: JSON
+    tag_exposure: JSON
+    narrative_analysis: JSON
+
+
+# ▼▼▼ 追加: ポートフォリオ明細の型 ▼▼▼
+@strawberry.django.type(PortfolioItem)
+class PortfolioItemType:
+    stock: "StockType"  # 既存のStockTypeを参照
+    quantity: float
+    average_price: float
+    target_weight: float | None
+    note: str | None
+
+    @strawberry.field
+    def current_value(self) -> float:
+        # 現在評価額 (株価 × 数量)
+        latest_analysis = self.stock.analysis_results.first()
+        price = (
+            latest_analysis.stock_price
+            if latest_analysis and latest_analysis.stock_price
+            else 0
+        )
+        return float(price) * float(self.quantity)
+
+    @strawberry.field
+    def profit_loss(self) -> float:
+        # 含み損益
+        return self.current_value() - (float(self.average_price) * float(self.quantity))
+
+
+# ▼▼▼ 追加: ポートフォリオ本体の型 ▼▼▼
+@strawberry.django.type(Portfolio)
+class PortfolioType:
+    id: strawberry.ID
+    name: str
+    description: str | None
+    owner_id: str
+    items: List[PortfolioItemType]
+
+    @strawberry.field
+    def analysis(self) -> PortfolioAnalysisType:
+        """
+        ここが心臓部。
+        APIで 'analysis' フィールドが要求された瞬間、
+        PortfolioAnalyzer を起動してリアルタイム診断を行う。
+        """
+        from .portfolio_analytics import PortfolioAnalyzer
+
+        analyzer = PortfolioAnalyzer(self)
+        result = analyzer.analyze()
+
+        return PortfolioAnalysisType(
+            total_value=result["total_value"],
+            health_score=result["health_score"],
+            diagnosis_summary=result["diagnosis_summary"],
+            category_exposure=result["category_exposure"],
+            tag_exposure=result["tag_exposure"],
+            narrative_analysis=result["narrative_analysis"],
+        )

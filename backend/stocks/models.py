@@ -271,3 +271,63 @@ class StockFetchLog(BaseModel):
 
     def __str__(self):
         return f"{self.stock.code} - {self.status} at {self.created_at}"
+
+
+class Portfolio(BaseModel):
+    """
+    ユーザーのポートフォリオ（資産の集合）。
+    """
+
+    name = models.CharField("ポートフォリオ名", max_length=100, default="My Portfolio")
+    description = models.TextField("メモ", blank=True, null=True)
+
+    # ユーザー認証(Auth)機能がまだのため、仮のIDを入れておきます。
+    # 将来的には Djangoの User モデルや、Auth0/SupabaseのUUIDと紐付けます。
+    owner_id = models.CharField(
+        "所有者ID", max_length=100, default="guest", db_index=True
+    )
+
+    # 運用開始日などを記録したければ追加できますが、まずはシンプルに。
+
+    def __str__(self):
+        return f"{self.name} ({self.owner_id})"
+
+
+class PortfolioItem(BaseModel):
+    """
+    ポートフォリオに含まれる個別銘柄 (明細行)。
+    """
+
+    portfolio = models.ForeignKey(
+        Portfolio, on_delete=models.CASCADE, related_name="items"
+    )
+    stock = models.ForeignKey(
+        Stock, on_delete=models.CASCADE, related_name="portfolio_items"
+    )
+
+    # --- 保有データ ---
+    # 数量 (株数)。米国株の部分株対応も考慮してDecimal型にします。
+    quantity = models.DecimalField(
+        "保有株数", max_digits=15, decimal_places=4, default=0
+    )
+
+    # 平均取得単価。損益計算のベースになります。
+    average_price = models.DecimalField(
+        "平均取得単価", max_digits=15, decimal_places=2, default=0
+    )
+
+    # --- 戦略データ (資産OSの肝) ---
+    # 目標比率 (Target Weight)。リバランス提案に使います。
+    # 例: 10.0 (=10%)
+    target_weight = models.FloatField("目標比率(%)", null=True, blank=True)
+
+    # 個別のメモ ("決算ギャンブル枠"、"10年放置枠"など)
+    note = models.TextField("投資メモ", blank=True, null=True)
+
+    class Meta:
+        # 同じポートフォリオに同じ銘柄は1つだけ（追加購入時はquantityを増やす運用）
+        unique_together = ("portfolio", "stock")
+        ordering = ["stock__code"]
+
+    def __str__(self):
+        return f"{self.portfolio.name} - {self.stock.name} ({self.quantity}株)"

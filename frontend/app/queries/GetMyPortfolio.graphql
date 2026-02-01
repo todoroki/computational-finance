@@ -1,0 +1,30 @@
+query GetMyPortfolio($ownerId: String!) {
+  myPortfolio(ownerId: $ownerId) {
+    id
+    name
+    items {
+      stock {
+        code
+        name
+        japaneseName
+        market
+        analysisResults {
+          stockPrice
+          status
+        }
+      }
+      quantity
+      averagePrice
+      currentValue
+      profitLoss
+    }
+    analysis {
+      totalValue
+      healthScore
+      diagnosisSummary
+      categoryExposure # JSON
+      tagExposure # JSON
+      narrativeAnalysis # JSON
+    }
+  }
+}
