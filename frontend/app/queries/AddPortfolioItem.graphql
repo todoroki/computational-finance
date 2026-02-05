@@ -3,12 +3,16 @@ mutation AddToPortfolio(
   $stockCode: String!
   $quantity: Float!
   $averagePrice: Float!
+  $investmentThesis: String
+  $exitStrategy: String
 ) {
   addToPortfolio(
     ownerId: $ownerId
     stockCode: $stockCode
     quantity: $quantity
     averagePrice: $averagePrice
+    investmentThesis: $investmentThesis
+    exitStrategy: $exitStrategy
   ) {
     id
     name
@@ -18,6 +22,8 @@ mutation AddToPortfolio(
         code
       }
       quantity
+      investmentThesis
+      exitStrategy
     }
   }
 }

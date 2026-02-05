@@ -324,6 +324,20 @@ class PortfolioItem(BaseModel):
     # 個別のメモ ("決算ギャンブル枠"、"10年放置枠"など)
     note = models.TextField("投資メモ", blank=True, null=True)
 
+    # ▼▼▼ 追加: 反証可能性のためのフィールド ▼▼▼
+    investment_thesis = models.TextField(
+        "投資仮説 (Why Now?)",
+        blank=True,
+        null=True,
+        help_text="なぜこの株を買うのか？どのシナリオに賭けているのか？",
+    )
+    exit_strategy = models.TextField(
+        "撤退条件 (When to Sell?)",
+        blank=True,
+        null=True,
+        help_text="何が起きたら間違いを認めて損切りするか？（反証可能性の定義）",
+    )
+
     class Meta:
         # 同じポートフォリオに同じ銘柄は1つだけ（追加購入時はquantityを増やす運用）
         unique_together = ("portfolio", "stock")

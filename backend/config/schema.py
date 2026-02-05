@@ -164,17 +164,36 @@ class Query:
 class Mutation:
     @strawberry.mutation
     def add_to_portfolio(
-        self, owner_id: str, stock_code: str, quantity: float, average_price: float
+        self,
+        owner_id: str,
+        stock_code: str,
+        quantity: float,
+        average_price: float,
+        investment_thesis: Optional[str] = None,
+        exit_strategy: Optional[str] = None,
     ) -> Optional[PortfolioType]:
         """ポートフォリオに銘柄を追加（または更新）"""
-        portfolio, _ = Portfolio.objects.get_or_create(owner_id=owner_id)
-        stock = Stock.objects.get(code=stock_code)
+        """ポートフォリオに銘柄を追加（または更新）"""
+        target_owner = owner_id if owner_id else "guest"
+
+        portfolio, _ = Portfolio.objects.get_or_create(owner_id=target_owner)
+
+        try:
+            stock = Stock.objects.get(code=stock_code)
+        except Stock.DoesNotExist:
+            return None
 
         # 既存なら更新、なければ作成
         item, created = PortfolioItem.objects.update_or_create(
             portfolio=portfolio,
             stock=stock,
-            defaults={"quantity": quantity, "average_price": average_price},
+            defaults={
+                "quantity": quantity,
+                "average_price": average_price,
+                # ▼▼▼ 追加: ここで保存！ ▼▼▼
+                "investment_thesis": investment_thesis,
+                "exit_strategy": exit_strategy,
+            },
         )
         return portfolio
 

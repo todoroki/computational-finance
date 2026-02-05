@@ -17,6 +17,8 @@ query GetMyPortfolio($ownerId: String!) {
       averagePrice
       currentValue
       profitLoss
+      investmentThesis
+      exitStrategy
     }
     analysis {
       totalValue

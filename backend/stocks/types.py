@@ -139,6 +139,10 @@ class PortfolioItemType:
     target_weight: float | None
     note: str | None
 
+    # ▼▼▼ 追加: 魂のフィールド ▼▼▼
+    investment_thesis: str | None
+    exit_strategy: str | None
+
     # ロジックをメソッド外に出すか、計算用ヘルパーを作るのが定石ですが、
     # ここではシンプルに profit_loss 内でも計算するように修正します。
 

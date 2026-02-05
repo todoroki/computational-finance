@@ -344,6 +344,9 @@ export default function PortfolioPage() {
           // ▼▼▼ 編集モードとして初期値を渡す ▼▼▼
           initialQuantity={editingItem.quantity}
           initialAveragePrice={editingItem.averagePrice}
+          // ▼▼▼ 追加 ▼▼▼
+          initialThesis={editingItem.investmentThesis}
+          initialExitStrategy={editingItem.exitStrategy}
         />
       )}
     </div>
