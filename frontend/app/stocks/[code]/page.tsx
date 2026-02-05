@@ -1,12 +1,12 @@
 "use client";
 
-import React, { use } from "react";
+import React, { use, useState } from "react";
 import { useQuery } from "@apollo/client/react";
 import { GetStockDetailDocument } from "@/lib/gql/graphql";
 import Link from "next/link";
 import TradingViewWidget from "@/components/TradingViewWidget";
 import StockFinancialChart from "@/components/StockFinancialChart";
-
+import AddToPortfolioModal from "@/components/AddToPortfolioModal"; // 追加
 // ヘルパー: 通貨フォーマット
 const formatCurrency = (val?: number | null) => {
   if (!val) return "-";
@@ -25,7 +25,7 @@ export default function StockDetailPage({
   params: Promise<{ code: string }>;
 }) {
   const { code } = use(params);
-
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const { data, loading, error } = useQuery(GetStockDetailDocument, {
     variables: { code },
   });
@@ -113,7 +113,9 @@ export default function StockDetailPage({
   ];
 
   // 有効なタグだけ抽出
-  const activeTags = tags.filter((t) => analysis && (analysis[t.key as keyof typeof analysis]));
+  const activeTags = tags.filter(
+    (t) => analysis && analysis[t.key as keyof typeof analysis],
+  );
 
   // チャート用データ整形
   const chartData =
@@ -141,6 +143,13 @@ export default function StockDetailPage({
               {stock.code} | {stock.japaneseMarket || stock.market}
             </div>
           </div>
+          {/* 追加ボタンの実装 */}
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="text-xs font-bold bg-gray-900 text-white px-4 py-2 rounded-full hover:bg-gray-700 hover:scale-105 transition-all shadow-lg shadow-gray-200 flex items-center gap-1"
+          >
+            <span>+</span> Portfolio
+          </button>
           <div className="w-10"></div> {/* Spacer */}
         </div>
       </header>
@@ -360,6 +369,14 @@ export default function StockDetailPage({
           </div>
         </div>
       </main>
+      {/* ▼▼▼ これを追加！ ▼▼▼ */}
+      <AddToPortfolioModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        stockCode={stock.code}
+        currentPrice={analysis?.stockPrice || 0}
+        stockName={stock.japaneseName || stock.name}
+      />
     </div>
   );
 }

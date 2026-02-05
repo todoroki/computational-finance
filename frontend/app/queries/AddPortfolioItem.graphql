@@ -1,0 +1,23 @@
+mutation AddToPortfolio(
+  $ownerId: String!
+  $stockCode: String!
+  $quantity: Float!
+  $averagePrice: Float!
+) {
+  addToPortfolio(
+    ownerId: $ownerId
+    stockCode: $stockCode
+    quantity: $quantity
+    averagePrice: $averagePrice
+  ) {
+    id
+    name
+    # 追加後の結果としてアイテム一覧を返してもらうと、キャッシュ更新に便利
+    items {
+      stock {
+        code
+      }
+      quantity
+    }
+  }
+}
