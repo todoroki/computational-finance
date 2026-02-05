@@ -83,14 +83,14 @@ const NarrativeCard = ({ narrative }: { narrative: Narrative }) => {
 };
 
 // 2. Portfolio Item Row
-// 2. Portfolio Item Row (編集ボタン追加)
 const PortfolioItemRow = ({
   item,
-  onEdit, // 追加: 編集ボタンが押された時のコールバック
+  onEdit,
 }: {
   item: PortfolioItem;
   onEdit: (item: PortfolioItem) => void;
 }) => {
+  const [isExpanded, setIsExpanded] = useState(false); // 開閉状態
   const stock = item.stock;
   const pl = item.profitLoss ?? 0;
   const plColor = pl >= 0 ? "text-green-600" : "text-red-500";
@@ -98,6 +98,7 @@ const PortfolioItemRow = ({
   const analysis = stock.analysisResults?.[0];
   const status = analysis?.status;
 
+  // 削除用Mutation
   const [removeFromPortfolio, { loading }] = useMutation(
     RemoveFromPortfolioDocument,
     {
@@ -118,65 +119,120 @@ const PortfolioItemRow = ({
     }
   };
 
+  // ジャーナルが空かどうか判定 (空ならアイコンを薄くする等のため)
+  const hasJournal = item.investmentThesis || item.exitStrategy;
+
   return (
-    <div className="flex items-center justify-between p-4 bg-white border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors group">
-      <div className="flex items-center gap-3">
-        <div
-          className={`w-2 h-10 rounded-full ${
-            status === "Strong Buy"
-              ? "bg-red-500"
-              : status === "Avoid"
-                ? "bg-gray-800"
-                : "bg-gray-200"
-          }`}
-        ></div>
+    <div className="border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors group">
+      {/* メイン行 */}
+      <div className="flex items-center justify-between p-4">
+        <div className="flex items-center gap-3">
+          {/* ステータスバー */}
+          <div
+            className={`w-2 h-10 rounded-full ${
+              status === "Strong Buy"
+                ? "bg-red-500"
+                : status === "Avoid"
+                  ? "bg-gray-800"
+                  : "bg-gray-200"
+            }`}
+          ></div>
 
-        <div>
-          <Link
-            href={`/stocks/${stock.code}`}
-            className="font-bold text-gray-900 hover:text-blue-600 block"
-          >
-            {stock.japaneseName || stock.name}
-          </Link>
-          <div className="text-xs text-gray-400 font-mono">
-            {stock.code} • {Number(item.quantity).toLocaleString()}株 @ ¥
-            {Number(item.averagePrice).toLocaleString()}
+          <div>
+            <Link
+              href={`/stocks/${stock.code}`}
+              className="font-bold text-gray-900 hover:text-blue-600 block"
+            >
+              {stock.japaneseName || stock.name}
+            </Link>
+            <div className="text-xs text-gray-400 font-mono">
+              {stock.code} • {Number(item.quantity).toLocaleString()}株 @ ¥
+              {Number(item.averagePrice).toLocaleString()}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <div className="font-mono font-bold text-gray-800">
+              ¥{item.currentValue?.toLocaleString() ?? "-"}
+            </div>
+            <div className={`text-xs font-mono font-bold ${plColor}`}>
+              {plSign}¥{pl.toLocaleString()}
+            </div>
+          </div>
+
+          {/* アクションボタンエリア */}
+          <div className="flex items-center gap-1">
+            {/* ジャーナル展開ボタン (New!) */}
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className={`p-2 rounded-full transition-colors ${
+                isExpanded
+                  ? "bg-indigo-100 text-indigo-600"
+                  : hasJournal
+                    ? "text-gray-400 hover:text-indigo-600 hover:bg-indigo-50"
+                    : "text-gray-200 hover:text-gray-400"
+              }`}
+              title="投資ジャーナルを表示"
+            >
+              📖
+            </button>
+
+            {/* 編集ボタン */}
+            <button
+              onClick={() => onEdit(item)}
+              className="p-2 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+              title="編集"
+            >
+              ✏️
+            </button>
+
+            {/* 削除ボタン */}
+            <button
+              onClick={handleDelete}
+              disabled={loading}
+              className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+              title="削除"
+            >
+              🗑️
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="text-right">
-          <div className="font-mono font-bold text-gray-800">
-            ¥{item.currentValue?.toLocaleString() ?? "-"}
-          </div>
-          <div className={`text-xs font-mono font-bold ${plColor}`}>
-            {plSign}¥{pl.toLocaleString()}
+      {/* ジャーナル展開エリア (New!) */}
+      {isExpanded && (
+        <div className="px-14 pb-6 animate-in slide-in-from-top-2 duration-200">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50/50 p-4 rounded-xl border border-gray-100">
+            {/* Thesis */}
+            <div className="space-y-1">
+              <div className="text-[10px] font-bold text-blue-600 uppercase flex items-center gap-1">
+                🎯 Investment Thesis
+              </div>
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                {item.investmentThesis || (
+                  <span className="text-gray-400 italic">未記入</span>
+                )}
+              </p>
+            </div>
+
+            {/* Exit Strategy */}
+            <div className="space-y-1 md:border-l md:border-gray-200 md:pl-4">
+              <div className="text-[10px] font-bold text-red-500 uppercase flex items-center gap-1">
+                🚪 Exit Strategy
+              </div>
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                {item.exitStrategy || (
+                  <span className="text-gray-400 italic">
+                    未記入 - 非常に危険です
+                  </span>
+                )}
+              </p>
+            </div>
           </div>
         </div>
-
-        {/* アクションボタンエリア */}
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {/* 編集ボタン (New!) */}
-          <button
-            onClick={() => onEdit(item)}
-            className="p-2 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-            title="数量・単価を編集"
-          >
-            ✏️
-          </button>
-
-          {/* 削除ボタン */}
-          <button
-            onClick={handleDelete}
-            disabled={loading}
-            className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-            title="削除"
-          >
-            🗑️
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
