@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react"; // useEffectは削除済み
+
 import { useMutation } from "@apollo/client/react";
 import { AddToPortfolioDocument } from "@/lib/gql/graphql";
 
@@ -8,34 +9,53 @@ interface AddToPortfolioModalProps {
   isOpen: boolean;
   onClose: () => void;
   stockCode: string;
-  currentPrice: number;
   stockName: string;
+  currentPrice: number; // 現在値（参考用）
+
+  // ▼▼▼ 追加: 編集モード用の初期値 (Optional) ▼▼▼
+  initialQuantity?: number;
+  initialAveragePrice?: number;
 }
 
 export default function AddToPortfolioModal({
   isOpen,
   onClose,
   stockCode,
-  currentPrice,
   stockName,
+  currentPrice,
+  initialQuantity, // 追加
+  initialAveragePrice, // 追加
 }: AddToPortfolioModalProps) {
-  // フォームの状態
-  // 修正前: 初期値 "" にして、useEffect で currentPrice をセットしていた
-  // 修正後: 初期値に直接 currentPrice を入れる (開くたびにコンポーネントが作り直されるためこれでOK)
-  const [quantity, setQuantity] = useState<string>("100");
+  // 編集モードかどうかの判定
+  const isEditMode = initialQuantity !== undefined;
+
+  // 初期値のロジック修正:
+  // 編集モードなら「持っている株数・取得単価」を初期値にする
+  // 新規モードなら「100株」「現在値」を初期値にする
+  const [quantity, setQuantity] = useState<string>(
+    initialQuantity ? initialQuantity.toString() : "100",
+  );
   const [price, setPrice] = useState<string>(
-    currentPrice ? currentPrice.toString() : "",
+    initialAveragePrice
+      ? initialAveragePrice.toString()
+      : currentPrice
+        ? currentPrice.toString()
+        : "",
   );
 
-  // Mutationフック
+  // Mutation (既存と同じ)
   const [addToPortfolio, { loading, error }] = useMutation(
     AddToPortfolioDocument,
     {
       onCompleted: () => {
-        alert("ポートフォリオに追加しました！");
+        // メッセージを出し分ける
+        alert(
+          isEditMode
+            ? "ポジションを更新しました！"
+            : "ポートフォリオに追加しました！",
+        );
         onClose();
       },
-      // キャッシュ更新（MyPortfolioクエリの再取得）
       refetchQueries: ["GetMyPortfolio"],
     },
   );
@@ -44,7 +64,7 @@ export default function AddToPortfolioModal({
     e.preventDefault();
     addToPortfolio({
       variables: {
-        ownerId: "guest", // 仮のID
+        ownerId: "guest",
         stockCode: stockCode,
         quantity: parseFloat(quantity),
         averagePrice: parseFloat(price),
@@ -59,7 +79,9 @@ export default function AddToPortfolioModal({
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
         {/* Header */}
         <div className="bg-gray-50 px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-          <h3 className="font-bold text-gray-800">ポートフォリオに追加</h3>
+          <h3 className="font-bold text-gray-800">
+            {isEditMode ? "ポジションを編集" : "ポートフォリオに追加"}
+          </h3>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
@@ -77,6 +99,11 @@ export default function AddToPortfolioModal({
             <div className="font-bold text-lg text-gray-900">
               {stockName} ({stockCode})
             </div>
+            {isEditMode && (
+              <div className="text-xs text-blue-600 font-bold mt-1">
+                ※ 既存のポジションを上書きします
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -96,7 +123,7 @@ export default function AddToPortfolioModal({
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
-                取得単価 (円)
+                {isEditMode ? "平均取得単価 (円)" : "取得単価 (円)"}
               </label>
               <input
                 type="number"
@@ -140,7 +167,7 @@ export default function AddToPortfolioModal({
               disabled={loading}
               className="flex-1 py-3 px-4 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "追加中..." : "ポートフォリオに追加"}
+              {loading ? "送信中..." : isEditMode ? "更新する" : "追加する"}
             </button>
           </div>
         </form>

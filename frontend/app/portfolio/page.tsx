@@ -7,6 +7,8 @@ import {
   GetMyPortfolioQuery,
   RemoveFromPortfolioDocument,
 } from "@/lib/gql/graphql";
+import { useState } from "react";
+import AddToPortfolioModal from "@/components/AddToPortfolioModal"; // Modalをimport
 
 // --- Type Definitions ---
 
@@ -81,7 +83,14 @@ const NarrativeCard = ({ narrative }: { narrative: Narrative }) => {
 };
 
 // 2. Portfolio Item Row
-const PortfolioItemRow = ({ item }: { item: PortfolioItem }) => {
+// 2. Portfolio Item Row (編集ボタン追加)
+const PortfolioItemRow = ({
+  item,
+  onEdit, // 追加: 編集ボタンが押された時のコールバック
+}: {
+  item: PortfolioItem;
+  onEdit: (item: PortfolioItem) => void;
+}) => {
   const stock = item.stock;
   const pl = item.profitLoss ?? 0;
   const plColor = pl >= 0 ? "text-green-600" : "text-red-500";
@@ -89,11 +98,10 @@ const PortfolioItemRow = ({ item }: { item: PortfolioItem }) => {
   const analysis = stock.analysisResults?.[0];
   const status = analysis?.status;
 
-  // 削除用Mutation
   const [removeFromPortfolio, { loading }] = useMutation(
     RemoveFromPortfolioDocument,
     {
-      refetchQueries: ["GetMyPortfolio"], // 削除後に再取得してグラフを更新
+      refetchQueries: ["GetMyPortfolio"],
       awaitRefetchQueries: true,
     },
   );
@@ -105,10 +113,7 @@ const PortfolioItemRow = ({ item }: { item: PortfolioItem }) => {
       )
     ) {
       removeFromPortfolio({
-        variables: {
-          ownerId: "guest",
-          stockCode: stock.code,
-        },
+        variables: { ownerId: "guest", stockCode: stock.code },
       });
     }
   };
@@ -116,7 +121,6 @@ const PortfolioItemRow = ({ item }: { item: PortfolioItem }) => {
   return (
     <div className="flex items-center justify-between p-4 bg-white border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors group">
       <div className="flex items-center gap-3">
-        {/* ステータスバー */}
         <div
           className={`w-2 h-10 rounded-full ${
             status === "Strong Buy"
@@ -141,7 +145,7 @@ const PortfolioItemRow = ({ item }: { item: PortfolioItem }) => {
         </div>
       </div>
 
-      <div className="flex items-center gap-6">
+      <div className="flex items-center gap-4">
         <div className="text-right">
           <div className="font-mono font-bold text-gray-800">
             ¥{item.currentValue?.toLocaleString() ?? "-"}
@@ -151,15 +155,27 @@ const PortfolioItemRow = ({ item }: { item: PortfolioItem }) => {
           </div>
         </div>
 
-        {/* 削除ボタン (Hover時に表示) */}
-        <button
-          onClick={handleDelete}
-          disabled={loading}
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full"
-          title="ポートフォリオから削除"
-        >
-          🗑️
-        </button>
+        {/* アクションボタンエリア */}
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {/* 編集ボタン (New!) */}
+          <button
+            onClick={() => onEdit(item)}
+            className="p-2 text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+            title="数量・単価を編集"
+          >
+            ✏️
+          </button>
+
+          {/* 削除ボタン */}
+          <button
+            onClick={handleDelete}
+            disabled={loading}
+            className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+            title="削除"
+          >
+            🗑️
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -169,8 +185,9 @@ const PortfolioItemRow = ({ item }: { item: PortfolioItem }) => {
 export default function PortfolioPage() {
   const OWNER_ID = "guest";
 
-  // ジェネリクス <GetMyPortfolioQuery> を指定しなくても、Documentから型推論されますが、
-  // 戻り値の型安全性を担保するためにDocumentを使用します。
+  // 編集中のアイテムを管理するState
+  const [editingItem, setEditingItem] = useState<PortfolioItem | null>(null);
+
   const { data, loading, error } = useQuery(GetMyPortfolioDocument, {
     variables: { ownerId: OWNER_ID },
     fetchPolicy: "cache-and-network",
@@ -191,15 +208,12 @@ export default function PortfolioPage() {
 
   const pf = data?.myPortfolio;
   const analysis = pf?.analysis;
-
-  // JSON型(Scalar)はTypeScript上ではunknownやanyになりがちなので、
-  // ここで明示的に型アサーションを行って「正体」を教えます。
   const narratives =
     (analysis?.narrativeAnalysis as unknown as Narrative[]) || [];
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
-      {/* Header */}
+      {/* Header (省略なし) */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <h1 className="text-xl font-black tracking-tighter text-gray-800">
@@ -215,8 +229,9 @@ export default function PortfolioPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 mt-8 space-y-8">
-        {/* 1. Health Score Hero */}
+        {/* 1. Health Score Hero (省略なし) */}
         <div className="bg-gray-900 text-white rounded-3xl p-8 shadow-xl relative overflow-hidden">
+          {/* ... (既存コードと同じ) ... */}
           <div
             className={`absolute top-0 right-0 w-96 h-96 rounded-full blur-3xl opacity-30 -mr-20 -mt-20 ${
               (analysis?.healthScore || 0) < 50
@@ -226,7 +241,6 @@ export default function PortfolioPage() {
                   : "bg-blue-500"
             }`}
           ></div>
-
           <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
             <div className="text-center md:text-left flex-1">
               <div className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-1">
@@ -237,11 +251,9 @@ export default function PortfolioPage() {
                 <span className="text-xl text-gray-500 font-normal">/100</span>
               </div>
               <p className="mt-4 text-gray-300 font-medium leading-relaxed max-w-lg">
-                {analysis?.diagnosisSummary ||
-                  "診断データがありません。銘柄を追加してください。"}
+                {analysis?.diagnosisSummary || "診断データがありません。"}
               </p>
             </div>
-
             <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 min-w-[200px] text-center border border-white/10">
               <div className="text-xs text-gray-400 uppercase mb-1">
                 Total Assets
@@ -262,12 +274,10 @@ export default function PortfolioPage() {
                 NDI Analysis
               </span>
             </h3>
-
             <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
               <p className="text-xs text-gray-400 mb-4">
                 あなたの資産が「どの未来」に賭けているかを可視化します。特定のシナリオへの依存度が50%を超えると危険です。
               </p>
-
               {narratives.length > 0 ? (
                 narratives.map((n) => (
                   <NarrativeCard key={n.key} narrative={n} />
@@ -286,44 +296,56 @@ export default function PortfolioPage() {
               <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider">
                 Holdings
               </h3>
-              <button className="text-xs font-bold text-blue-600 hover:underline">
-                + 銘柄を追加・編集
-              </button>
+              {/* ここには特定の機能を持たせないボタンか、検索へのリンクにする */}
+              <Link
+                href="/"
+                className="text-xs font-bold text-blue-600 hover:underline"
+              >
+                + 銘柄を探す
+              </Link>
             </div>
 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               {pf?.items && pf.items.length > 0 ? (
                 pf.items.map((item) => (
-                  <PortfolioItemRow key={item.stock.code} item={item} />
+                  <PortfolioItemRow
+                    key={item.stock.code}
+                    item={item}
+                    onEdit={(itm) => setEditingItem(itm)} // 編集ボタンクリックでStateセット
+                  />
                 ))
               ) : (
                 <div className="p-12 text-center">
-                  <div className="text-4xl mb-4">📭</div>
                   <h3 className="font-bold text-gray-700">
                     ポートフォリオは空です
                   </h3>
-                  <p className="text-sm text-gray-500 mt-2 mb-6">
-                    まだ銘柄が登録されていません。
-                    <br />
-                    APIを使って銘柄を追加するか、デモデータを投入してください。
-                  </p>
-
-                  <div className="text-xs bg-gray-100 p-4 rounded text-left font-mono text-gray-600 overflow-x-auto">
-                    <p className="mb-2 font-bold">
-                      💡 GraphQL Playgroundで以下を実行してデータを追加:
-                    </p>
-                    <pre className="whitespace-pre-wrap">
-                      {`mutation {
-  addToPortfolio(ownerId: "guest", stockCode: "7203", quantity: 100, averagePrice: 2000) { id }
-}`}
-                    </pre>
-                  </div>
+                  <Link
+                    href="/"
+                    className="mt-4 inline-block bg-blue-600 text-white px-6 py-2 rounded-full font-bold shadow-lg hover:bg-blue-700 transition"
+                  >
+                    銘柄を検索して追加する
+                  </Link>
                 </div>
               )}
             </div>
           </div>
         </div>
       </main>
+
+      {/* 編集用モーダル */}
+      {/* editingItem が存在するときだけレンダリングされる */}
+      {editingItem && (
+        <AddToPortfolioModal
+          isOpen={!!editingItem}
+          onClose={() => setEditingItem(null)} // 閉じたらnullに戻す
+          stockCode={editingItem.stock.code}
+          stockName={editingItem.stock.japaneseName || editingItem.stock.name}
+          currentPrice={editingItem.stock.analysisResults?.[0]?.stockPrice || 0}
+          // ▼▼▼ 編集モードとして初期値を渡す ▼▼▼
+          initialQuantity={editingItem.quantity}
+          initialAveragePrice={editingItem.averagePrice}
+        />
+      )}
     </div>
   );
 }
