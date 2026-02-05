@@ -1,8 +1,12 @@
 "use client";
 
-import { useQuery } from "@apollo/client/react"; // 修正: react配下からimport
+import { useQuery, useMutation } from "@apollo/client/react"; // 修正: react配下からimport
 import Link from "next/link";
-import { GetMyPortfolioDocument, GetMyPortfolioQuery } from "@/lib/gql/graphql";
+import {
+  GetMyPortfolioDocument,
+  GetMyPortfolioQuery,
+  RemoveFromPortfolioDocument,
+} from "@/lib/gql/graphql";
 
 // --- Type Definitions ---
 
@@ -82,13 +86,35 @@ const PortfolioItemRow = ({ item }: { item: PortfolioItem }) => {
   const pl = item.profitLoss ?? 0;
   const plColor = pl >= 0 ? "text-green-600" : "text-red-500";
   const plSign = pl >= 0 ? "+" : "";
-
-  // Optional chainingで安全にアクセス
   const analysis = stock.analysisResults?.[0];
   const status = analysis?.status;
 
+  // 削除用Mutation
+  const [removeFromPortfolio, { loading }] = useMutation(
+    RemoveFromPortfolioDocument,
+    {
+      refetchQueries: ["GetMyPortfolio"], // 削除後に再取得してグラフを更新
+      awaitRefetchQueries: true,
+    },
+  );
+
+  const handleDelete = () => {
+    if (
+      confirm(
+        `「${stock.japaneseName || stock.name}」をポートフォリオから削除しますか？`,
+      )
+    ) {
+      removeFromPortfolio({
+        variables: {
+          ownerId: "guest",
+          stockCode: stock.code,
+        },
+      });
+    }
+  };
+
   return (
-    <div className="flex items-center justify-between p-4 bg-white border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors">
+    <div className="flex items-center justify-between p-4 bg-white border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors group">
       <div className="flex items-center gap-3">
         {/* ステータスバー */}
         <div
@@ -115,18 +141,29 @@ const PortfolioItemRow = ({ item }: { item: PortfolioItem }) => {
         </div>
       </div>
 
-      <div className="text-right">
-        <div className="font-mono font-bold text-gray-800">
-          ¥{item.currentValue?.toLocaleString() ?? "-"}
+      <div className="flex items-center gap-6">
+        <div className="text-right">
+          <div className="font-mono font-bold text-gray-800">
+            ¥{item.currentValue?.toLocaleString() ?? "-"}
+          </div>
+          <div className={`text-xs font-mono font-bold ${plColor}`}>
+            {plSign}¥{pl.toLocaleString()}
+          </div>
         </div>
-        <div className={`text-xs font-mono font-bold ${plColor}`}>
-          {plSign}¥{pl.toLocaleString()}
-        </div>
+
+        {/* 削除ボタン (Hover時に表示) */}
+        <button
+          onClick={handleDelete}
+          disabled={loading}
+          className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full"
+          title="ポートフォリオから削除"
+        >
+          🗑️
+        </button>
       </div>
     </div>
   );
 };
-
 // --- Main Page ---
 
 export default function PortfolioPage() {

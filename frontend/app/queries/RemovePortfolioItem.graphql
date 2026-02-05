@@ -1,0 +1,17 @@
+mutation RemoveFromPortfolio($ownerId: String!, $stockCode: String!) {
+  removeFromPortfolio(ownerId: $ownerId, stockCode: $stockCode) {
+    id
+    analysis {
+      totalValue
+      healthScore
+      # 削除後にリスクがどう変わったか即座に知るため取得
+      narrativeAnalysis
+      diagnosisSummary
+    }
+    items {
+      stock {
+        code
+      }
+    }
+  }
+}
