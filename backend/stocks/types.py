@@ -7,11 +7,10 @@ from .models import AnalysisResult, FinancialStatement, Portfolio, PortfolioItem
 
 
 # === 1. 分析結果の型定義 ===
-# ▼ ここを修正: @strawberry.type ではなく @strawberry.django.type(Model) にする
 @strawberry.django.type(AnalysisResult)
 class AnalysisResultType:
     # Basic
-    date: strawberry.auto  # これを使うために django.type が必要
+    date: strawberry.auto
     stock_price: float | None
     market_cap: float | None
 
@@ -32,7 +31,7 @@ class AnalysisResultType:
     is_good_buy: bool
     ai_summary: str | None
 
-    implied_revenue_growth: float | None  # ★追加: 売上ベース
+    implied_revenue_growth: float | None
     actual_revenue_growth: float | None
     expectation_gap: float | None
     state: str
@@ -40,18 +39,29 @@ class AnalysisResultType:
     risk_level: str
     risk_details: str | None
 
-    # ▼▼▼ ここに追加！ (11個のタグ) ▼▼▼
+    # ▼▼▼ 追加: 財務データ (ソートや表示に使用) ▼▼▼
+    # ※ AnalysisResultモデルにこれらのメソッド/プロパティがない場合、FinancialStatementから取るロジックが必要ですが
+    # ここではモデルにプロパティとして定義されている、あるいはannotateされている前提で定義します。
+    # もしモデルになければ、@strawberry.fieldで定義する必要があります。
+
+    # ここではシンプルに、モデルに定義されていると仮定して型を追加します。
+    # もしエラーになる場合は、models.py に @property を追加してください。
+    free_cash_flow: float | None
+    operating_cf: float | None
+    net_income: float | None
+
+    # ▼▼▼ 11個のタグ (完全網羅) ▼▼▼
     tag_safety_shield: bool
-    tag_cash_cow: bool
     tag_quality_growth: bool
-    tag_institutional: bool
+    tag_institutional: bool  # 追加
+    tag_cash_cow: bool  # 追加
     tag_single_engine: bool
-    tag_high_volatility: bool
-    tag_silent_improver: bool
+    tag_silent_improver: bool  # 追加
     tag_turnaround: bool
     tag_zombie: bool
-    tag_accounting_risk: bool
-    tag_fragile: bool
+    tag_accounting_risk: bool  # 追加
+    tag_high_volatility: bool  # 追加
+    tag_fragile: bool  # 追加
 
 
 # === 2. 財務データの型定義 ===
@@ -59,7 +69,7 @@ class AnalysisResultType:
 class FinancialStatementType:
     fiscal_year: int
     quarter: int
-    period_end: strawberry.auto  # これを使うために django.type が必要
+    period_end: strawberry.auto
 
     # PL
     revenue: float | None
@@ -88,11 +98,14 @@ class StockType:
     sector: str | None
     market: str | None
     description: str | None
-    # ▼▼▼ これがないとエラーになります ▼▼▼
+
     japanese_name: str | None
     japanese_sector: str | None
     japanese_market: str | None
-    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+    # ▼▼▼ 追加: 17業種コード名 ▼▼▼
+    # models.py に sector_17_code_name フィールドがある前提
+    sector_17_code_name: str | None
 
     # リレーション: 分析結果 (最新順)
     @strawberry.field
@@ -105,32 +118,17 @@ class StockType:
         return self.financials.all().order_by("fiscal_year")
 
 
-# # === 4. クエリ定義 ===
-# @strawberry.type
-# class Query:
-#     @strawberry.field
-#     def stocks(self) -> List[StockType]:
-#         return Stock.objects.all()
-
-#     @strawberry.field
-#     def stock(self, code: str) -> Optional[StockType]:
-#         return Stock.objects.filter(code=code).first()
-
-
-# ▼▼▼ 追加: ポートフォリオ診断結果の型 ▼▼▼
+# === 4. ポートフォリオ関連 (変更なし) ===
 @strawberry.type
 class PortfolioAnalysisType:
     total_value: float
     health_score: int
     diagnosis_summary: str
-
-    # 構造データは柔軟に扱えるようJSONとして返します
     category_exposure: JSON
     tag_exposure: JSON
     narrative_analysis: JSON
 
 
-# ▼▼▼ 追加: ポートフォリオ明細の型 ▼▼▼
 @strawberry.django.type(PortfolioItem)
 class PortfolioItemType:
     stock: "StockType"
@@ -138,17 +136,11 @@ class PortfolioItemType:
     average_price: float
     target_weight: float | None
     note: str | None
-
-    # ▼▼▼ 追加: 魂のフィールド ▼▼▼
     investment_thesis: str | None
     exit_strategy: str | None
 
-    # ロジックをメソッド外に出すか、計算用ヘルパーを作るのが定石ですが、
-    # ここではシンプルに profit_loss 内でも計算するように修正します。
-
     @strawberry.field
     def current_value(self) -> float:
-        # 現在評価額 (株価 × 数量)
         latest_analysis = self.stock.analysis_results.first()
         price = (
             latest_analysis.stock_price
@@ -159,8 +151,6 @@ class PortfolioItemType:
 
     @strawberry.field
     def profit_loss(self) -> float:
-        # 含み損益
-        # 1. 現在価格を取得 (current_valueと同じロジック)
         latest_analysis = self.stock.analysis_results.first()
         price = (
             latest_analysis.stock_price
@@ -168,14 +158,10 @@ class PortfolioItemType:
             else 0
         )
         current_val = float(price) * float(self.quantity)
-
-        # 2. 取得原価
         cost_basis = float(self.average_price) * float(self.quantity)
-
         return current_val - cost_basis
 
 
-# ▼▼▼ 追加: ポートフォリオ本体の型 ▼▼▼
 @strawberry.django.type(Portfolio)
 class PortfolioType:
     id: strawberry.ID
@@ -186,16 +172,10 @@ class PortfolioType:
 
     @strawberry.field
     def analysis(self) -> PortfolioAnalysisType:
-        """
-        ここが心臓部。
-        APIで 'analysis' フィールドが要求された瞬間、
-        PortfolioAnalyzer を起動してリアルタイム診断を行う。
-        """
         from .portfolio_analytics import PortfolioAnalyzer
 
         analyzer = PortfolioAnalyzer(self)
         result = analyzer.analyze()
-
         return PortfolioAnalysisType(
             total_value=result["total_value"],
             health_score=result["health_score"],

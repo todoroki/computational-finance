@@ -43,6 +43,31 @@ class Stock(BaseModel):
     japanese_market = models.CharField(max_length=100, null=True, blank=True)
     # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
+    class Sector17(models.TextChoices):
+        IT_SERVICES = "IT・通信・サービス", "IT・通信・サービス"
+        AUTOMOTIVE = "自動車・輸送機", "自動車・輸送機"
+        ELECTRONICS = "電気・精密機器", "電気・精密機器"
+        FINANCE = "銀行・金融", "銀行・金融"
+        TRADING = "商社・卸売", "商社・卸売"
+        RETAIL = "小売・外食", "小売・外食"
+        HEALTHCARE = "医薬品・ヘルスケア", "医薬品・ヘルスケア"
+        MATERIALS = "素材・化学", "素材・化学"
+        MACHINERY = "機械・建設", "機械・建設"
+        ENERGY = "エネルギー・インフラ", "エネルギー・インフラ"
+        REAL_ESTATE = "不動産", "不動産"
+        OTHERS = "その他", "その他"
+
+    # ▼▼▼ これを追加してください！ ▼▼▼
+    # フロントエンドのドロップダウン用（17業種区分など）の集約コード名
+    sector_17_code_name = models.CharField(
+        "17業種コード",
+        max_length=100,
+        null=True,
+        blank=True,
+        choices=Sector17.choices,  # ★これでDBに入る値が制限される
+    )
+    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
     def __str__(self):
         return f"{self.code} {self.name}"
 
@@ -230,6 +255,23 @@ class AnalysisResult(BaseModel):
     tag_zombie = models.BooleanField("ゾンビ企業", default=False)
     tag_accounting_risk = models.BooleanField("会計リスク", default=False)
     tag_fragile = models.BooleanField("前提崩壊リスク", default=False)
+
+    # ▼▼▼ 追加: ランキング・ソート用財務データ (Snapshot) ▼▼▼
+    # FinancialStatementから重要な値をコピーして持ちます
+    net_income = models.DecimalField(
+        "当期純利益", max_digits=20, decimal_places=0, null=True
+    )
+    operating_cf = models.DecimalField(
+        "営業CF", max_digits=20, decimal_places=0, null=True
+    )
+    free_cash_flow = models.DecimalField(
+        "フリーCF",
+        max_digits=20,
+        decimal_places=0,
+        null=True,
+        help_text="営業CF - CapEx",
+    )
+    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
     class Meta:
         ordering = ["-created_at"]  # BaseModelのcreated_atを使用

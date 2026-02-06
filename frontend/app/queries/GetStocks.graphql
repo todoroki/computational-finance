@@ -1,7 +1,8 @@
 query GetStocks(
   $search: String
-  $status: String
-  $rankingMode: String # ★追加
+  $status: String # ★復活: これがないとステータス絞り込みができない
+  $rankingMode: String
+  $sector: String
   $limit: Int
   $offset: Int
   $sortBy: String
@@ -9,32 +10,46 @@ query GetStocks(
 ) {
   stocks(
     search: $search
-    status: $status
-    rankingMode: $rankingMode # ★追加
+    status: $status # ★復活
+    rankingMode: $rankingMode
+    sector: $sector
     limit: $limit
     offset: $offset
-    sortBy: $sortBy # ★追加
-    sortOrder: $sortOrder # ★追加
+    sortBy: $sortBy
+    sortOrder: $sortOrder
   ) {
     code
     name
-    japaneseName # ★追加
-    japaneseSector # ★追加
-    japaneseMarket
-    sector
+    japaneseName
     market
-
+    japaneseMarket # ★復活: 日本語表示用にあると便利
+    sector17CodeName # OK: 新しい業種コード
     analysisResults {
-      date
       stockPrice
       status
-      isGoodBuy
       zScore
       grossProfitability
-      impliedGrowthRate # FCFベース (既存)
-      impliedRevenueGrowth # ★追加 (売上ベース)
-      actualRevenueGrowth # 実績
-      expectationGap # 乖離
+      expectationGap
+
+      # --- Tags ---
+      tagZombie
+      tagSafetyShield
+      tagQualityGrowth
+      tagInstitutional
+      tagCashCow
+      tagSingleEngine
+      tagSilentImprover
+      tagTurnaround
+      tagAccountingRisk
+      tagHighVolatility
+      tagFragile
+
+      # --- Other Metrics ---
+      fScore
+      actualRevenueGrowth
+      freeCashFlow
+      operatingCf
+      netIncome
     }
   }
 }
