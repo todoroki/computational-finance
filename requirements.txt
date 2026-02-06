@@ -94,5 +94,5 @@ websockets==16.0
     # via yfinance
 xlrd==2.0.2
     # via computational-finance (pyproject.toml)
-yfinance==1.0
+yfinance==1.1.0
     # via computational-finance (pyproject.toml)

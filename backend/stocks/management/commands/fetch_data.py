@@ -29,15 +29,12 @@ class Command(BaseCommand):
             return
 
         # 1. Stockを取得 (なければ作成)
-        # update_or_create ではなく get_or_create を使います
         stock, created = Stock.objects.get_or_create(code=ticker_symbol)
 
         should_save = False
 
         # --- A. 社名 (Name) ---
-        # 既存データがない、または「不明」の場合のみ更新
         if not stock.name or stock.name == "不明":
-            # shortNameがあればそれを、なければ longName を使う
             stock.name = info.get("shortName") or info.get("longName", "不明")
             should_save = True
 
@@ -47,19 +44,20 @@ class Command(BaseCommand):
             should_save = True
 
         # --- C. 市場 (Market) ---
-        # "Prime" と決め打ちせず、データがない場合のみ Industry等で埋める
         if not stock.market or stock.market == "不明":
-            # 市場区分の代わりに Industry (e.g., Biotechnology) を入れておく
             stock.market = info.get("industry", "Unknown")
             should_save = True
 
         # --- D. 概要 (Description) ---
         if not stock.description or stock.description == "不明":
             summary = info.get("longBusinessSummary", "")
-            stock.description = summary[:500]  # 文字数制限
+            stock.description = summary[:500]
             should_save = True
 
-        # 2. 変更があった場合のみ保存
+        # --- E. 17業種区分 (New!) ---
+        # 既にスクリプトで入れたデータがあるはずなので、ここでは上書きしない
+        # もし自動判別ロジックを入れるならここ
+
         if created or should_save:
             stock.save()
             action = "Created" if created else "Updated"
@@ -75,6 +73,13 @@ class Command(BaseCommand):
         financials = stock_data.financials.T
         bs = stock_data.balance_sheet.T
         cf = stock_data.cashflow.T
+
+        # データがない場合のガード
+        if financials.empty or bs.empty:
+            self.stderr.write(
+                self.style.ERROR(f"No financial data found for {ticker_symbol}")
+            )
+            return
 
         all_dates = sorted(list(set(financials.index) | set(bs.index) | set(cf.index)))
         saved_statements = []
@@ -92,28 +97,24 @@ class Command(BaseCommand):
                     return float(val)
             return 0.0
 
+        # APIから返ってきた全期間を保存する (30年来たら30年保存する)
         for date in all_dates:
             period_end = date.date()
             year = period_end.year
 
             # === PL ===
             revenue = get_val(financials, date, ["Total Revenue", "Total Revenue"])
-
-            # 【修正】銀行対策: 営業利益がない場合は "Pretax Income" (税引前利益) 等で代用
-            # Ordinary Income (経常利益) があればベストだが、yfinanceだと Pretax が近いことが多い
             op_income = get_val(
                 financials,
                 date,
                 ["Operating Income", "Operating Profit", "Pretax Income"],
             )
-
             net_income = get_val(financials, date, "Net Income")
             ebit = get_val(
                 financials,
                 date,
                 ["EBIT", "Net Income From Continuing Ops", "Pretax Income"],
             )
-
             interest_expense = get_val(
                 financials, date, ["Interest Expense", "Interest Expense Non Operating"]
             )
@@ -129,14 +130,9 @@ class Command(BaseCommand):
 
             # === BS ===
             total_assets = get_val(bs, date, "Total Assets")
-            # ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
-            # 【ここに追加！】幽霊データ撃退ロジック
-            # 総資産が 0 ということは、BSデータが存在しないか、
-            # Yahooが空の予定データ(2025年など)を返しているということ。
-            # その場合、この年度はゴミなので保存せずにスキップする。
             if total_assets == 0:
                 continue
-            # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
             total_equity = get_val(
                 bs,
                 date,
@@ -216,6 +212,20 @@ class Command(BaseCommand):
         def safe(val):
             return val if val is not None else 0.0
 
+        # 現在の株価・時価総額取得
+        current_price = info.get("currentPrice") or info.get("regularMarketPrice", 0)
+        market_cap = info.get("marketCap", 0)
+
+        # ▼▼▼ 追加: 基礎指標計算用のデータ取得 ▼▼▼
+        shares_outstanding = info.get("sharesOutstanding", 0)
+        dividend_rate = info.get("dividendRate", 0)  # 1株配当
+        if dividend_rate is None:
+            dividend_rate = 0
+
+        # 株数が0の場合、時価総額から逆算を試みる
+        if shares_outstanding == 0 and current_price > 0:
+            shares_outstanding = market_cap / current_price
+
         # 1. Inputデータ作成
         metrics_input = FinancialMetricsInput(
             revenue=safe(latest.revenue),
@@ -234,8 +244,8 @@ class Command(BaseCommand):
             operating_cf=safe(latest.operating_cf),
             investing_cf=safe(latest.investing_cf),
             capex=safe(latest.capex),
-            stock_price=info.get("currentPrice", 0),
-            market_cap=info.get("marketCap", 0),
+            stock_price=current_price,
+            market_cap=market_cap,
             beta=info.get("beta", 1.0) or 1.0,
             prev_revenue=safe(prev.revenue),
             prev_operating_income=safe(prev.operating_income),
@@ -248,7 +258,7 @@ class Command(BaseCommand):
             sector=stock.sector or "Unknown",
         )
 
-        # 2. 基本指標計算
+        # 2. 基本指標計算 (既存)
         f_score, f_reasons = FinancialCalculator.calculate_piotroski_f_score(
             metrics_input
         )
@@ -257,7 +267,7 @@ class Command(BaseCommand):
         gross_prof = FinancialCalculator.calculate_gross_profitability(metrics_input)
         roiic = FinancialCalculator.calculate_roiic(metrics_input)
 
-        # 3. 期待値・成長計算
+        # 3. 期待値・成長計算 (既存)
         implied_g_fcf = FinancialCalculator.calculate_implied_growth_rate(metrics_input)
         implied_g_rev = FinancialCalculator.calculate_implied_revenue_growth(
             metrics_input
@@ -267,7 +277,7 @@ class Command(BaseCommand):
         )
         gap = FinancialCalculator.calculate_reality_gap(implied_g_rev, actual_g_rev)
 
-        # 4. 4層診断 (State, Expectation, Risk)
+        # 4. 4層診断 (既存)
         z_zone = FinancialCalculator.classify_altman_zone(z_score if z_score else 0)
         has_fcf = (metrics_input.operating_cf + metrics_input.investing_cf) > 0
 
@@ -280,10 +290,58 @@ class Command(BaseCommand):
         )
         risk_details_str = ", ".join(risk_dtl_list)
 
-        # 5. ★性格タグ判定 (New!)
+        # 5. 性格タグ判定 (既存)
         tags, primary_tag = FinancialCalculator.detect_character_tags(
             metrics_input, z_score, f_score, actual_g_rev, gap
         )
+
+        # ▼▼▼ 追加: Phase 3 基礎指標計算 ▼▼▼
+        # 安全な割り算関数
+        def safe_div(n, d):
+            return n / d if d and d != 0 else 0.0
+
+        # EPS (1株益)
+        eps = safe_div(metrics_input.net_income, shares_outstanding)
+
+        # BPS (1株純資産)
+        bps = safe_div(metrics_input.total_equity, shares_outstanding)
+
+        # PER (株価 / EPS)
+        # 利益がマイナス、またはEPSが0の場合は0(算出不可)とする
+        per = safe_div(metrics_input.stock_price, eps) if eps > 0 else 0.0
+
+        # PBR (株価 / BPS)
+        pbr = safe_div(metrics_input.stock_price, bps) if bps > 0 else 0.0
+
+        # ROE (自己資本利益率) = 純利益 / 自己資本 * 100
+        roe = safe_div(metrics_input.net_income, metrics_input.total_equity) * 100
+
+        # ROA (総資産利益率) = 純利益 / 総資産 * 100
+        roa = safe_div(metrics_input.net_income, metrics_input.total_assets) * 100
+
+        # 自己資本比率 = 自己資本 / 総資産 * 100
+        equity_ratio = (
+            safe_div(metrics_input.total_equity, metrics_input.total_assets) * 100
+        )
+
+        # 配当利回り = 1株配当 / 株価 * 100
+        # yfinanceのdividendYieldは少数(0.03など)で来る場合と、dividendRate(円)で来る場合がある
+        # ここでは dividendRate(円) / 株価 で計算する
+        dividend_yield = 0.0
+        if current_price > 0 and dividend_rate > 0:
+            dividend_yield = (dividend_rate / current_price) * 100
+        elif info.get("dividendYield"):  # バックアップ
+            dividend_yield = info.get("dividendYield") * 100
+
+        # FCF計算 (Model保存用)
+        # CapExは通常負の値で入っていることが多いが、yfinanceは正の値で返すことが多い。
+        # 上記の get_val で取得した値が正なら引く。
+        # ただしCF計算書の符号はサイトによってマチマチなので、ここでは
+        # 「営業CF - 投資CF(の絶対値)」ではなく「営業CF - CapEx」とする
+        # investing_cf は通常マイナスなので、free_cash_flow = operating_cf + investing_cf でも簡易的には良い
+        # ここでは厳密に capex を使う
+        free_cf = metrics_input.operating_cf - metrics_input.capex
+        # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
         # 6. 総合判定 (Status & AI Summary)
         # --- 既存ロジックの再利用 ---
@@ -368,7 +426,7 @@ class Command(BaseCommand):
                 "risk_details": risk_details_str,
                 "is_good_buy": is_good_buy,
                 "ai_summary": ai_summary,
-                # ▼▼▼ タグ保存 (ここが重要！) ▼▼▼
+                # タグ
                 "tag_safety_shield": tags["tag_safety_shield"],
                 "tag_cash_cow": tags["tag_cash_cow"],
                 "tag_quality_growth": tags["tag_quality_growth"],
@@ -380,11 +438,23 @@ class Command(BaseCommand):
                 "tag_zombie": tags["tag_zombie"],
                 "tag_accounting_risk": tags["tag_accounting_risk"],
                 "tag_fragile": tags["tag_fragile"],
+                # ▼▼▼ Phase 3 追加: 基礎指標 & ソート用財務データ ▼▼▼
+                "net_income": metrics_input.net_income,
+                "operating_cf": metrics_input.operating_cf,
+                "free_cash_flow": free_cf,
+                "eps": eps,
+                "bps": bps,
+                "per": per,
+                "pbr": pbr,
+                "roe": roe,
+                "roa": roa,
+                "equity_ratio": equity_ratio,
+                "dividend_yield": dividend_yield,
             },
         )
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Analyzed {stock.name}: [{final_label}] State={state}, Exp={expectation}, Tags={[k for k, v in tags.items() if v]}"
+                f"Analyzed {stock.name}: [{final_label}] PER={per:.1f} PBR={pbr:.1f} ROE={roe:.1f}%"
             )
         )

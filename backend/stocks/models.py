@@ -273,6 +273,23 @@ class AnalysisResult(BaseModel):
     )
     # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
+    # ▼▼▼ Phase 3 追加: 基礎ファンダメンタルズ ▼▼▼
+    # 1. 効率性
+    roe = models.FloatField("ROE(%)", null=True, help_text="自己資本利益率")
+    roa = models.FloatField("ROA(%)", null=True, help_text="総資産利益率")
+
+    # 2. 割安性
+    per = models.FloatField("PER(倍)", null=True, help_text="株価収益率")
+    pbr = models.FloatField("PBR(倍)", null=True, help_text="株価純資産倍率")
+
+    # 3. 1株あたり指標
+    eps = models.FloatField("EPS(円)", null=True, help_text="1株当たり純利益")
+    bps = models.FloatField("BPS(円)", null=True, help_text="1株当たり純資産")
+
+    # 4. 安全性・還元
+    equity_ratio = models.FloatField("自己資本比率(%)", null=True)
+    dividend_yield = models.FloatField("配当利回り(%)", null=True)
+
     class Meta:
         ordering = ["-created_at"]  # BaseModelのcreated_atを使用
         get_latest_by = "created_at"
