@@ -330,7 +330,7 @@ export default function MarketPage() {
             href="/"
             className="text-xl font-black tracking-tighter text-gray-900"
           >
-            ASSET<span className="text-blue-600">OS</span>{" "}
+            Stock<span className="text-blue-600">MRI</span>{" "}
             <span className="text-gray-400 font-normal text-sm ml-2">
               Market Scanner
             </span>

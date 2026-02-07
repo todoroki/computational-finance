@@ -273,7 +273,7 @@ export default function PortfolioPage() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <h1 className="text-xl font-black tracking-tighter text-gray-800">
-            ASSET<span className="text-blue-600">OS</span>
+            Stock<span className="text-blue-600">MRI</span>
           </h1>
           <Link
             href="/"

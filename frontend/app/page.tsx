@@ -7,7 +7,7 @@ export default function LandingPage() {
       <nav className="fixed top-0 w-full z-50 bg-slate-950/80 backdrop-blur-md border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="text-xl font-black tracking-tighter text-white">
-            ASSET<span className="text-blue-500">OS</span>
+            Stock<span className="text-blue-500">MRI</span>
           </div>
           <div className="flex gap-4">
             <Link
@@ -137,7 +137,7 @@ export default function LandingPage() {
                 上がれば「実力だ」と過信する。
               </p>
               <p className="text-slate-400 leading-relaxed">
-                AssetOSは、あなたのポートフォリオを数学と論理でスキャンし、
+                STOCKMRIは、あなたのポートフォリオを数学と論理でスキャンし、
                 <span className="text-blue-400 font-bold">
                   「隠れたリスク」
                 </span>
@@ -246,7 +246,7 @@ export default function LandingPage() {
                 </h3>
                 <p className="text-slate-400 leading-relaxed mb-6">
                   銘柄を分けても、それらが同じ「世界観」に依存していたら意味がありません。
-                  AssetOSは、財務データと定性情報を解析し、あなたが本当に賭けているリスクを数値化します。
+                  StockMRIは、財務データと定性情報を解析し、あなたが本当に賭けているリスクを数値化します。
                 </p>
                 <ul className="space-y-2 text-sm text-slate-300">
                   <li className="flex gap-2">
@@ -280,7 +280,7 @@ export default function LandingPage() {
                 「なぜ買ったのか？」「いつ売るのか？」
               </h3>
               <p className="text-slate-400 leading-relaxed mb-8">
-                購入ボタンを押す前に、AssetOSはあなたに契約書へのサインを求めます。
+                  購入ボタンを押す前に、StockMRIはあなたに契約書へのサインを求めます。
                 未来のあなたが「含み損」を抱えたとき、過去のあなたが書いた「撤退条件」が、
                 言い訳を許さない冷徹な鏡として機能します。
               </p>
@@ -356,7 +356,7 @@ export default function LandingPage() {
             href="/portfolio"
             className="btn btn-lg bg-blue-600 hover:bg-blue-500 text-white border-none rounded-full px-12 h-16 text-lg shadow-xl shadow-blue-600/20 hover:scale-105 transition-all"
           >
-            Start AssetOS Now
+            Start StockMRI Now
           </Link>
           <p className="mt-6 text-sm text-slate-500">
             No credit card required. Guest mode available.
@@ -368,7 +368,7 @@ export default function LandingPage() {
       <footer className="bg-slate-950 border-t border-white/5 py-12">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="text-slate-500 text-sm">
-            © 2026 AssetOS Project. All rights reserved.
+            © 2026 StockMRI Project. All rights reserved.
           </div>
           <div className="flex gap-6 text-sm font-bold text-slate-400">
             <a href="#" className="hover:text-white transition-colors">

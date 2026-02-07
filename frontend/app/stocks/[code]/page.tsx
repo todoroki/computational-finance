@@ -176,7 +176,7 @@ export default function StockDetailPage({
   if (loading)
     return (
       <div className="min-h-screen flex justify-center items-center text-gray-400 font-mono">
-        Scanning AssetOS...
+          Scanning StockMRI...
       </div>
     );
   if (error)
