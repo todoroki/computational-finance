@@ -1,130 +1,351 @@
+"use client";
+
+import { useQuery } from "@apollo/client/react";
 import Link from "next/link";
-import { GetStocksQuery } from "@/lib/gql/graphql";
+import { useSearchParams, usePathname, useRouter } from "next/navigation";
+import { useCallback, useState } from "react";
+import { GetStocksDocument, GetStocksQuery } from "@/lib/gql/graphql";
+// ▼▼▼ インポートを追加 ▼▼▼
+import { StockCard } from "@/components/StockCardMarket";
 
-// GraphQLの型定義から、stocks配列の中身の型を抽出
-type StockSummary = GetStocksQuery["stocks"][number];
+// --- Constants ---
+const SECTORS = [
+  "IT・通信・サービス",
+  "自動車・輸送機",
+  "電気・精密機器",
+  "銀行・金融",
+  "商社・卸売",
+  "小売・外食",
+  "医薬品・ヘルスケア",
+  "素材・化学",
+  "機械・建設",
+  "エネルギー・インフラ",
+  "不動産",
+  "その他",
+];
 
-export default function StockCard({ stock }: { stock: StockSummary }) {
-  const analysis = stock.analysisResults?.[0];
-  const price = analysis?.stockPrice?.toLocaleString() ?? "---";
+export default function MarketPage() {
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const [isFilterExpanded, setIsFilterExpanded] = useState(true);
 
-  // 日本語名があれば優先表示
-  const displayName = stock.japaneseName || stock.name;
-  const displaySector = stock.japaneseSector || stock.sector;
-  const displayMarket = stock.japaneseMarket || stock.market;
+  // URL Params
+  const currentSearch = searchParams.get("search") || "";
+  const currentSector = searchParams.get("sector") || "";
+  const modeParam = searchParams.get("mode");
+  const currentModes = modeParam ? modeParam.split(",") : [];
 
-  // バッジの色分けロジック
-  const badgeColor =
-    analysis?.status === "Strong Buy"
-      ? "bg-red-500 text-white shadow-red-200 shadow-md"
-      : analysis?.status === "Buy"
-        ? "bg-orange-500 text-white shadow-orange-200 shadow-md"
-        : analysis?.status === "Buy (Spec)"
-          ? "bg-yellow-400 text-black border-2 border-dashed border-gray-800"
-          : analysis?.status === "Avoid"
-            ? "bg-gray-800 text-white"
-            : analysis?.status === "Sell"
-              ? "bg-blue-600 text-white"
-              : "bg-gray-100 text-gray-500";
+  const createQueryString = useCallback(
+    (name: string, value: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (value && value !== "All") {
+        params.set(name, value);
+      } else {
+        params.delete(name);
+      }
+      return params.toString();
+    },
+    [searchParams],
+  );
+
+  const handleSearch = (term: string) => {
+    router.replace(`${pathname}?${createQueryString("search", term || null)}`);
+  };
+
+  const handleSectorChange = (sector: string) => {
+    router.push(`${pathname}?${createQueryString("sector", sector)}`);
+  };
+
+  const toggleMode = (modeId: string | null) => {
+    if (modeId === null) {
+      router.push(`${pathname}?${createQueryString("mode", null)}`);
+      return;
+    }
+    let newModes = [...currentModes];
+    if (newModes.includes(modeId)) {
+      newModes = newModes.filter((m) => m !== modeId);
+    } else {
+      newModes.push(modeId);
+    }
+    const newValue = newModes.length > 0 ? newModes.join(",") : null;
+    router.push(`${pathname}?${createQueryString("mode", newValue)}`);
+  };
+
+  const { data, loading, error } = useQuery<GetStocksQuery>(GetStocksDocument, {
+    variables: {
+      search: currentSearch,
+      rankingModes: currentModes,
+      sector: currentSector,
+      limit: 50,
+    },
+  });
+
+  const CATEGORIES = [
+    {
+      id: "safety_shield",
+      label: "🛡️ 盤石の盾",
+      desc: "倒産リスク皆無・高自己資本・FCF黒字",
+      group: "Safety",
+    },
+    {
+      id: "quality_growth",
+      label: "👑 王道成長",
+      desc: "高収益・2桁成長・高財務スコア",
+      group: "Safety",
+    },
+    {
+      id: "institutional",
+      label: "🧠 プロ好み",
+      desc: "機関投資家が好む安定性と質",
+      group: "Safety",
+    },
+
+    {
+      id: "gap_opportunities",
+      label: "💎 割安放置",
+      desc: "実力値より安く買える (Gap Opportunity)",
+      group: "Character",
+    },
+    {
+      id: "cash_cow",
+      label: "🧱 金なる木",
+      desc: "低成長だが現金を稼ぎまくる",
+      group: "Character",
+    },
+    {
+      id: "single_engine",
+      label: "🚀 夢株(投機)",
+      desc: "赤字だが超高成長・片肺飛行",
+      group: "Character",
+    },
+    {
+      id: "silent_improver",
+      label: "🌱 静かなる改善",
+      desc: "市場は気づいていないが体質改善中",
+      group: "Character",
+    },
+    {
+      id: "turnaround",
+      label: "🔁 復活の兆し",
+      desc: "赤字脱却・底打ち反転",
+      group: "Character",
+    },
+
+    {
+      id: "zombie",
+      label: "💀 ゾンビ企業",
+      desc: "利払い能力なし・倒産予備軍",
+      group: "Risk",
+    },
+    {
+      id: "accounting_risk",
+      label: "🧪 会計リスク",
+      desc: "黒字だが現金が増えていない・粉飾疑義",
+      group: "Risk",
+    },
+    {
+      id: "high_volatility",
+      label: "🎢 ボラ覚悟",
+      desc: "期待過熱かつ財務脆弱・乱高下必至",
+      group: "Risk",
+    },
+    {
+      id: "fragile",
+      label: "🚨 前提崩壊",
+      desc: "超高期待・低財務・FCF赤字",
+      group: "Risk",
+    },
+  ];
 
   return (
-    <Link
-      href={`/stocks/${stock.code}`}
-      className="block bg-white rounded-2xl p-5 shadow-sm border border-gray-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group"
-    >
-      {/* 上段: コード・社名・ステータス */}
-      <div className="flex justify-between items-start mb-3">
-        <div>
-          <span className="text-xs font-mono font-bold text-gray-400 mb-0.5 block">
-            {stock.code}
-          </span>
-          <h3 className="font-bold text-gray-900 leading-tight group-hover:text-blue-600 transition-colors line-clamp-1">
-            {displayName}
-          </h3>
-        </div>
-        <span
-          className={`text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap ${badgeColor}`}
-        >
-          {analysis?.status ?? "N/A"}
-        </span>
-      </div>
-
-      {/* 中段: セクター・市場 */}
-      <div className="flex gap-2 mb-4">
-        <span className="text-[10px] bg-gray-50 text-gray-500 px-2 py-0.5 rounded border border-gray-100 truncate max-w-[100px]">
-          {displaySector}
-        </span>
-        <span className="text-[10px] bg-gray-50 text-gray-500 px-2 py-0.5 rounded border border-gray-100">
-          {displayMarket}
-        </span>
-      </div>
-
-      {/* 下段: ミニスコアボード */}
-      {analysis ? (
-        <div className="grid grid-cols-3 gap-2 bg-slate-50 rounded-lg p-2 border border-slate-100">
-          {/* 1. Z-Score (安全性) */}
-          <div className="text-center">
-            <div className="text-[9px] text-gray-400 uppercase font-bold mb-0.5">
-              Safety
-            </div>
-            <div
-              className={`text-xs font-bold ${
-                (analysis.zScore ?? 0) < 1.8 ? "text-red-500" : "text-slate-700"
-              }`}
+    <div className="min-h-screen bg-slate-50 text-slate-800 pb-20">
+      <nav className="bg-white border-b border-gray-200 sticky top-0 z-20">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <Link
+            href="/"
+            className="text-xl font-black tracking-tighter text-gray-900"
+          >
+            ASSET<span className="text-blue-600">OS</span>{" "}
+            <span className="text-gray-400 font-normal text-sm ml-2">
+              Market Scanner
+            </span>
+          </Link>
+          <div className="flex gap-4">
+            <Link
+              href="/about"
+              className="text-sm font-bold text-blue-600 hover:underline"
             >
-              Z: {analysis.zScore?.toFixed(1) ?? "-"}
+              ℹ️ 分析ロジック解説
+            </Link>
+            <Link
+              href="/portfolio"
+              className="text-sm font-bold text-gray-500 hover:text-blue-600 ml-4"
+            >
+              My Portfolio
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      <main className="max-w-7xl mx-auto px-6 mt-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-6">
+            Market Explorer
+          </h1>
+
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                placeholder="銘柄コードまたは企業名..."
+                className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-gray-200 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
+                value={currentSearch}
+                onChange={(e) => handleSearch(e.target.value)}
+              />
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+                🔍
+              </span>
+            </div>
+
+            <div className="relative min-w-[200px]">
+              <select
+                value={currentSector}
+                onChange={(e) => handleSectorChange(e.target.value)}
+                className="w-full pl-4 pr-10 py-3.5 rounded-xl border border-gray-200 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base bg-white appearance-none font-bold text-gray-700 cursor-pointer"
+              >
+                <option value="All">🏢 全業種</option>
+                {SECTORS.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                ▼
+              </span>
             </div>
           </div>
 
-          {/* 2. Profitability (収益性) */}
-          <div className="text-center border-l border-slate-200">
-            <div className="text-[9px] text-gray-400 uppercase font-bold mb-0.5">
-              Quality
-            </div>
-            <div
-              className={`text-xs font-bold ${
-                (analysis.grossProfitability ?? 0) > 0.4
-                  ? "text-blue-600"
-                  : "text-slate-700"
-              }`}
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+              className="flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-gray-900 transition-colors"
             >
-              GP:{" "}
-              {analysis.grossProfitability
-                ? `${(analysis.grossProfitability * 100).toFixed(0)}%`
-                : "-"}
-            </div>
+              <span
+                className={`transform transition-transform ${isFilterExpanded ? "rotate-180" : ""}`}
+              >
+                ▼
+              </span>
+              {isFilterExpanded ? "フィルタを隠す" : "詳細フィルタを表示"}
+            </button>
+
+            {!isFilterExpanded && currentModes.length > 0 && (
+              <div className="flex gap-2">
+                {currentModes.map((mode) => (
+                  <span
+                    key={mode}
+                    className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold flex items-center gap-1"
+                  >
+                    {CATEGORIES.find((c) => c.id === mode)?.label}
+                    <button
+                      onClick={() => toggleMode(mode)}
+                      className="hover:text-red-500 ml-1"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* 3. Growth Gap (期待乖離) */}
-          <div className="text-center border-l border-slate-200">
-            <div className="text-[9px] text-gray-400 uppercase font-bold mb-0.5">
-              Gap
-            </div>
-            <div
-              className={`text-xs font-bold ${
-                (analysis.expectationGap ?? 0) < -10
-                  ? "text-green-600" // 割安
-                  : (analysis.expectationGap ?? 0) > 20
-                    ? "text-red-500" // 過熱
-                    : "text-slate-700"
-              }`}
-            >
-              {(analysis.expectationGap ?? 0) > 0 ? "+" : ""}
-              {analysis.expectationGap?.toFixed(0) ?? "-"}%
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="text-xs text-center py-4 text-gray-400 bg-gray-50 rounded-lg">
-          No Data
-        </div>
-      )}
+          {isFilterExpanded && (
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm animate-in slide-in-from-top-2 fade-in duration-200">
+              <div className="space-y-6">
+                <div>
+                  <button
+                    onClick={() => toggleMode(null)}
+                    className={`px-5 py-2 rounded-full text-sm font-bold transition-colors ${
+                      currentModes.length === 0
+                        ? "bg-gray-900 text-white shadow-lg"
+                        : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    📋 すべて表示 (クリア)
+                  </button>
+                </div>
 
-      {/* 株価 */}
-      <div className="mt-3 pt-2 border-t border-gray-50 flex justify-end items-baseline gap-1">
-        <span className="text-[10px] text-gray-400">Price:</span>
-        <span className="font-mono font-bold text-gray-800">¥{price}</span>
-      </div>
-    </Link>
+                {["Safety", "Character", "Risk"].map((groupName) => (
+                  <div
+                    key={groupName}
+                    className="flex flex-wrap gap-2 items-center"
+                  >
+                    <span className="text-[10px] font-bold text-gray-400 w-16 uppercase tracking-wider">
+                      {groupName}
+                    </span>
+                    {CATEGORIES.filter((c) => c.group === groupName).map(
+                      (cat) => {
+                        const isSelected = currentModes.includes(cat.id);
+                        return (
+                          <button
+                            key={cat.id}
+                            onClick={() => toggleMode(cat.id)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all border flex items-center gap-1 ${
+                              isSelected
+                                ? "bg-blue-600 text-white border-blue-600 shadow-md scale-105 ring-2 ring-blue-200 ring-offset-1"
+                                : groupName === "Risk"
+                                  ? "bg-white text-red-700 border-red-100 hover:bg-red-50"
+                                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-blue-200"
+                            }`}
+                          >
+                            {isSelected && <span>✓</span>}
+                            {cat.label}
+                          </button>
+                        );
+                      },
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {currentModes.length > 0 && (
+                <div className="mt-6 bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start gap-3">
+                  <span className="text-xl">💡</span>
+                  <div>
+                    <div className="text-xs font-bold text-blue-600 uppercase mb-1">
+                      Selected Filters (AND条件)
+                    </div>
+                    <ul className="text-sm font-bold text-gray-800 list-disc list-inside">
+                      {currentModes.map((mode) => (
+                        <li key={mode}>
+                          {CATEGORIES.find((c) => c.id === mode)?.desc}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="py-20 text-center text-gray-400">
+            Scanning Market Data...
+          </div>
+        ) : error ? (
+          <div className="py-20 text-center text-red-500">
+            Error: {error.message}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {data?.stocks?.map((stock) => (
+              <StockCard key={stock.code} stock={stock} />
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
   );
 }
