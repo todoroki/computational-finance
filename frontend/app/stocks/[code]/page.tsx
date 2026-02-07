@@ -453,7 +453,10 @@ export default function StockDetailPage({
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <div className="flex justify-between items-start mb-6">
               <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wider">
-                Reality Gap Analysis
+                期待乖離分析{" "}
+                <span className="text-xs font-normal text-gray-400 ml-1">
+                  Reality Gap
+                </span>
               </h3>
               <div className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded font-bold">
                 期待 vs 実績
@@ -513,7 +516,10 @@ export default function StockDetailPage({
 
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-6">
-              Corporate Diagnosis
+              企業状態診断{" "}
+              <span className="text-xs font-normal text-gray-400 ml-1">
+                Corporate Diagnosis
+              </span>
             </h3>
             <div className="space-y-4">
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">

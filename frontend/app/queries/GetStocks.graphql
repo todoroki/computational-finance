@@ -31,6 +31,13 @@ query GetStocks(
       grossProfitability
       expectationGap
 
+      # ▼▼▼ 追加: カード表示用の基礎指標 ▼▼▼
+      per
+      pbr
+      dividendYield
+      roe
+      # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
       # --- Tags ---
       tagZombie
       tagSafetyShield

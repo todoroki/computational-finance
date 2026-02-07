@@ -29,114 +29,157 @@ type StockItem = NonNullable<GetStocksQuery["stocks"]>[number];
 
 // --- Components ---
 
+const fmt = (val?: number | null, unit = "", fixed = 1) =>
+  val !== undefined && val !== null ? `${val.toFixed(fixed)}${unit}` : "-";
+
 const StockCard = ({ stock }: { stock: StockItem }) => {
   const analysis = stock.analysisResults?.[0];
   const gap = analysis?.expectationGap ?? 0;
 
-  return (
-    <Link href={`/stocks/${stock.code}`} className="block group">
-      <div className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-300 h-full flex flex-col relative overflow-hidden">
-        {/* Status Stripe */}
-        <div
-          className={`absolute left-0 top-0 bottom-0 w-1 ${
-            analysis?.status === "Strong Buy"
-              ? "bg-red-500"
-              : analysis?.status === "Avoid"
-                ? "bg-gray-800"
-                : "bg-gray-200"
-          }`}
-        ></div>
+  // ステータスの色定義
+  const statusColor =
+    analysis?.status === "Strong Buy"
+      ? "bg-red-500 text-white shadow-red-200"
+      : analysis?.status === "Buy"
+        ? "bg-orange-500 text-white shadow-orange-200"
+        : analysis?.status === "Avoid"
+          ? "bg-gray-800 text-white"
+          : analysis?.status === "Sell"
+            ? "bg-blue-600 text-white"
+            : "bg-gray-100 text-gray-600 border border-gray-200";
 
-        <div className="pl-3 mb-4">
-          <div className="flex justify-between items-start">
-            <div>
-              <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1">
-                {stock.japaneseName || stock.name}
-              </h3>
-              <div className="text-[10px] text-gray-400 font-mono mt-0.5">
-                {stock.code} | {stock.market}
-              </div>
-              {/* 業種バッジ */}
-              {stock.sector17CodeName && (
-                <div className="inline-block mt-1 px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[9px] rounded font-bold">
-                  {stock.sector17CodeName}
-                </div>
-              )}
+  return (
+    <Link href={`/stocks/${stock.code}`} className="block group h-full">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 h-full flex flex-col overflow-hidden relative">
+        {/* 1. Header Area */}
+        <div className="p-4 pb-2 flex justify-between items-start">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="font-mono text-xs text-gray-400 font-bold">
+                {stock.code}
+              </span>
+              <span className="text-[10px] px-1.5 py-0.5 bg-gray-50 text-gray-500 rounded border border-gray-100">
+                {stock.sector17CodeName || stock.market}
+              </span>
             </div>
-            <div className="text-right">
-              <div className="font-mono font-bold text-gray-800">
-                ¥{analysis?.stockPrice?.toLocaleString() ?? "-"}
-              </div>
-            </div>
+            <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1 text-lg leading-tight">
+              {stock.japaneseName || stock.name}
+            </h3>
+          </div>
+          {/* Status Badge */}
+          <div
+            className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide shadow-sm ${statusColor}`}
+          >
+            {analysis?.status || "-"}
           </div>
         </div>
 
-        <div className="pl-3 grid grid-cols-2 gap-3 mb-4 flex-1">
+        {/* 2. Price & Gap Area */}
+        <div className="px-4 py-2 flex justify-between items-end border-b border-dashed border-gray-100 pb-3">
           <div>
-            <div className="text-[10px] text-gray-400 font-bold uppercase mb-1">
-              財務健全性
-            </div>
-            <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full ${
-                  (analysis?.zScore ?? 0) > 3
-                    ? "bg-blue-500"
-                    : (analysis?.zScore ?? 0) < 1.8
-                      ? "bg-red-500"
-                      : "bg-yellow-400"
-                }`}
-                style={{
-                  width: `${Math.min(((analysis?.zScore ?? 0) / 5) * 100, 100)}%`,
-                }}
-              ></div>
-            </div>
-            <div className="text-[10px] text-right mt-0.5 font-mono text-gray-500">
-              {(analysis?.zScore ?? 0).toFixed(1)}
+            <div className="text-2xl font-mono font-bold text-gray-900 tracking-tight">
+              ¥{analysis?.stockPrice?.toLocaleString() ?? "-"}
             </div>
           </div>
-
-          <div>
-            <div className="text-[10px] text-gray-400 font-bold uppercase mb-1">
-              期待との乖離
+          <div className="text-right">
+            <div className="text-[10px] text-gray-400 font-bold mb-0.5">
+              期待乖離(Gap)
             </div>
             <div
               className={`text-sm font-bold font-mono ${gap > 0 ? "text-red-500" : "text-green-600"}`}
             >
-              {gap > 0 ? "過熱" : "割安"} {Math.abs(gap).toFixed(0)}%
+              {gap > 0 ? "+" : ""}
+              {gap.toFixed(0)}%
+              <span className="text-[10px] ml-1 font-sans font-normal text-gray-400">
+                {gap > 0 ? "(過熱)" : "(割安)"}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Tags */}
-        <div className="pl-3 flex gap-2 pt-3 border-t border-gray-50">
+        {/* 3. Fundamentals Grid (New!) */}
+        <div className="px-4 py-3 grid grid-cols-3 gap-2 bg-slate-50">
+          <div className="text-center">
+            <div className="text-[9px] text-gray-400 uppercase font-bold">
+              PER
+            </div>
+            <div className="text-sm font-mono font-bold text-gray-700">
+              {fmt(analysis?.per, "x")}
+            </div>
+          </div>
+          <div className="text-center border-l border-gray-200">
+            <div className="text-[9px] text-gray-400 uppercase font-bold">
+              PBR
+            </div>
+            <div className="text-sm font-mono font-bold text-gray-700">
+              {fmt(analysis?.pbr, "x", 2)}
+            </div>
+          </div>
+          <div className="text-center border-l border-gray-200">
+            <div className="text-[9px] text-gray-400 uppercase font-bold">
+              配当
+            </div>
+            <div className="text-sm font-mono font-bold text-gray-700">
+              {fmt(analysis?.dividendYield, "%", 2)}
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Tags Footer */}
+        <div className="p-3 flex flex-wrap gap-1.5 mt-auto pt-2">
           {analysis?.tagZombie && (
-            <span title="ゾンビ企業" className="text-lg cursor-help">
-              💀
+            <span className="px-1.5 py-0.5 bg-gray-800 text-white text-[10px] rounded font-bold">
+              💀 ゾンビ
             </span>
           )}
           {analysis?.tagSafetyShield && (
-            <span title="盤石の盾" className="text-lg cursor-help">
-              🛡️
+            <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded font-bold">
+              🛡️ 盤石
             </span>
           )}
           {analysis?.tagQualityGrowth && (
-            <span title="王道成長" className="text-lg cursor-help">
-              👑
-            </span>
-          )}
-          {analysis?.tagHighVolatility && (
-            <span title="高ボラティリティ" className="text-lg cursor-help">
-              🎢
+            <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] rounded font-bold">
+              👑 王道
             </span>
           )}
           {analysis?.tagInstitutional && (
-            <span title="機関投資家好み" className="text-lg cursor-help">
-              🧠
+            <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] rounded font-bold">
+              🧠 プロ
             </span>
           )}
           {analysis?.tagCashCow && (
-            <span title="金なる木" className="text-lg cursor-help">
-              🧱
+            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 text-[10px] rounded font-bold">
+              🧱 金なる木
+            </span>
+          )}
+          {analysis?.tagSingleEngine && (
+            <span className="px-1.5 py-0.5 bg-pink-100 text-pink-700 text-[10px] rounded font-bold">
+              🚀 夢株
+            </span>
+          )}
+          {analysis?.tagHighVolatility && (
+            <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] rounded font-bold">
+              🎢 ボラ
+            </span>
+          )}
+          {analysis?.tagSilentImprover && (
+            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] rounded font-bold">
+              🌱 改善
+            </span>
+          )}
+          {analysis?.tagTurnaround && (
+            <span className="px-1.5 py-0.5 bg-teal-100 text-teal-700 text-[10px] rounded font-bold">
+              🔁 復活
+            </span>
+          )}
+          {analysis?.tagAccountingRisk && (
+            <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded font-bold">
+              🧪 会計注
+            </span>
+          )}
+          {analysis?.tagFragile && (
+            <span className="px-1.5 py-0.5 bg-red-50 text-red-600 border border-red-200 text-[10px] rounded font-bold">
+              🚨 脆弱
             </span>
           )}
         </div>
@@ -144,7 +187,6 @@ const StockCard = ({ stock }: { stock: StockItem }) => {
     </Link>
   );
 };
-
 export default function MarketPage() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
