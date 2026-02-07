@@ -4,8 +4,10 @@ import { useQuery } from "@apollo/client/react";
 import Link from "next/link";
 import { useSearchParams, usePathname, useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
-// ▼▼▼ 追加: 生成された型定義をImport ▼▼▼
 import { GetStocksDocument, GetStocksQuery } from "@/lib/gql/graphql";
+
+// --- Types ---
+type StockItem = NonNullable<GetStocksQuery["stocks"]>[number];
 
 // --- Constants ---
 const SECTORS = [
@@ -23,12 +25,7 @@ const SECTORS = [
   "その他",
 ];
 
-// --- Types ---
-// 生成された型からエイリアスを作成 (利便性のため)
-type StockItem = NonNullable<GetStocksQuery["stocks"]>[number];
-
-// --- Components ---
-
+// ヘルパー関数
 const fmt = (val?: number | null, unit = "", fixed = 1) =>
   val !== undefined && val !== null ? `${val.toFixed(fixed)}${unit}` : "-";
 
@@ -36,7 +33,6 @@ const StockCard = ({ stock }: { stock: StockItem }) => {
   const analysis = stock.analysisResults?.[0];
   const gap = analysis?.expectationGap ?? 0;
 
-  // ステータスの色定義
   const statusColor =
     analysis?.status === "Strong Buy"
       ? "bg-red-500 text-white shadow-red-200"
@@ -51,7 +47,6 @@ const StockCard = ({ stock }: { stock: StockItem }) => {
   return (
     <Link href={`/stocks/${stock.code}`} className="block group h-full">
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 h-full flex flex-col overflow-hidden relative">
-        {/* 1. Header Area */}
         <div className="p-4 pb-2 flex justify-between items-start">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -66,7 +61,6 @@ const StockCard = ({ stock }: { stock: StockItem }) => {
               {stock.japaneseName || stock.name}
             </h3>
           </div>
-          {/* Status Badge */}
           <div
             className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide shadow-sm ${statusColor}`}
           >
@@ -74,7 +68,6 @@ const StockCard = ({ stock }: { stock: StockItem }) => {
           </div>
         </div>
 
-        {/* 2. Price & Gap Area */}
         <div className="px-4 py-2 flex justify-between items-end border-b border-dashed border-gray-100 pb-3">
           <div>
             <div className="text-2xl font-mono font-bold text-gray-900 tracking-tight">
@@ -97,7 +90,6 @@ const StockCard = ({ stock }: { stock: StockItem }) => {
           </div>
         </div>
 
-        {/* 3. Fundamentals Grid (New!) */}
         <div className="px-4 py-3 grid grid-cols-3 gap-2 bg-slate-50">
           <div className="text-center">
             <div className="text-[9px] text-gray-400 uppercase font-bold">
@@ -125,7 +117,6 @@ const StockCard = ({ stock }: { stock: StockItem }) => {
           </div>
         </div>
 
-        {/* 4. Tags Footer */}
         <div className="p-3 flex flex-wrap gap-1.5 mt-auto pt-2">
           {analysis?.tagZombie && (
             <span className="px-1.5 py-0.5 bg-gray-800 text-white text-[10px] rounded font-bold">
@@ -187,17 +178,20 @@ const StockCard = ({ stock }: { stock: StockItem }) => {
     </Link>
   );
 };
+
 export default function MarketPage() {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-
   const [isFilterExpanded, setIsFilterExpanded] = useState(true);
 
   // URL Params
   const currentSearch = searchParams.get("search") || "";
-  const currentMode = searchParams.get("mode");
   const currentSector = searchParams.get("sector") || "";
+
+  // ▼ 修正: カンマ区切り文字列を配列に変換して管理
+  const modeParam = searchParams.get("mode");
+  const currentModes = modeParam ? modeParam.split(",") : [];
 
   const createQueryString = useCallback(
     (name: string, value: string | null) => {
@@ -216,22 +210,38 @@ export default function MarketPage() {
     router.replace(`${pathname}?${createQueryString("search", term || null)}`);
   };
 
-  const handleModeChange = (mode: string | null) => {
-    const nextMode = currentMode === mode ? null : mode;
-    router.push(`${pathname}?${createQueryString("mode", nextMode)}`);
-  };
-
   const handleSectorChange = (sector: string) => {
     router.push(`${pathname}?${createQueryString("sector", sector)}`);
   };
 
-  // GraphQL Query (Generated Documentを使用)
+  // ▼ 追加: モードのトグルロジック (追加/削除)
+  const toggleMode = (modeId: string | null) => {
+    if (modeId === null) {
+      // すべて表示 (クリア)
+      router.push(`${pathname}?${createQueryString("mode", null)}`);
+      return;
+    }
+
+    let newModes = [...currentModes];
+    if (newModes.includes(modeId)) {
+      // 既に選択済みなら削除
+      newModes = newModes.filter((m) => m !== modeId);
+    } else {
+      // 未選択なら追加
+      newModes.push(modeId);
+    }
+
+    // 空になったらパラメータ削除、あればカンマ区切りでセット
+    const newValue = newModes.length > 0 ? newModes.join(",") : null;
+    router.push(`${pathname}?${createQueryString("mode", newValue)}`);
+  };
+
   const { data, loading, error } = useQuery<GetStocksQuery>(GetStocksDocument, {
     variables: {
       search: currentSearch,
-      rankingMode: currentMode,
+      rankingModes: currentModes, // 配列を渡す
       sector: currentSector,
-      limit: 50, // 必要に応じて増減
+      limit: 50,
     },
   });
 
@@ -327,8 +337,14 @@ export default function MarketPage() {
           </Link>
           <div className="flex gap-4">
             <Link
+              href="/about"
+              className="text-sm font-bold text-blue-600 hover:underline"
+            >
+              ℹ️ 分析ロジック解説
+            </Link>
+            <Link
               href="/portfolio"
-              className="text-sm font-bold text-gray-500 hover:text-blue-600"
+              className="text-sm font-bold text-gray-500 hover:text-blue-600 ml-4"
             >
               My Portfolio
             </Link>
@@ -337,13 +353,11 @@ export default function MarketPage() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-6 mt-8">
-        {/* Search & Filter Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-6">
             Market Explorer
           </h1>
 
-          {/* Search Bar & Sector Selector */}
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="relative flex-1">
               <input
@@ -377,7 +391,6 @@ export default function MarketPage() {
             </div>
           </div>
 
-          {/* Filter Toggle & Badge */}
           <div className="flex items-center justify-between mb-4">
             <button
               onClick={() => setIsFilterExpanded(!isFilterExpanded)}
@@ -391,38 +404,43 @@ export default function MarketPage() {
               {isFilterExpanded ? "フィルタを隠す" : "詳細フィルタを表示"}
             </button>
 
-            {!isFilterExpanded && currentMode && (
-              <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold flex items-center gap-1">
-                Filter: {CATEGORIES.find((c) => c.id === currentMode)?.label}
-                <button
-                  onClick={() => handleModeChange(currentMode)}
-                  className="hover:text-red-500 ml-1"
-                >
-                  ×
-                </button>
-              </span>
+            {/* 選択中タグのバッジ一覧 */}
+            {!isFilterExpanded && currentModes.length > 0 && (
+              <div className="flex gap-2">
+                {currentModes.map((mode) => (
+                  <span
+                    key={mode}
+                    className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-bold flex items-center gap-1"
+                  >
+                    {CATEGORIES.find((c) => c.id === mode)?.label}
+                    <button
+                      onClick={() => toggleMode(mode)}
+                      className="hover:text-red-500 ml-1"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
             )}
           </div>
 
-          {/* Accordion Filter Area */}
           {isFilterExpanded && (
             <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm animate-in slide-in-from-top-2 fade-in duration-200">
               <div className="space-y-6">
-                {/* 1. All Button */}
                 <div>
                   <button
-                    onClick={() => handleModeChange(null)}
+                    onClick={() => toggleMode(null)}
                     className={`px-5 py-2 rounded-full text-sm font-bold transition-colors ${
-                      currentMode === null
+                      currentModes.length === 0
                         ? "bg-gray-900 text-white shadow-lg"
                         : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
                     }`}
                   >
-                    📋 すべて表示
+                    📋 すべて表示 (クリア)
                   </button>
                 </div>
 
-                {/* 2. Groups */}
                 {["Safety", "Character", "Risk"].map((groupName) => (
                   <div
                     key={groupName}
@@ -432,37 +450,47 @@ export default function MarketPage() {
                       {groupName}
                     </span>
                     {CATEGORIES.filter((c) => c.group === groupName).map(
-                      (cat) => (
-                        <button
-                          key={cat.id}
-                          onClick={() => handleModeChange(cat.id)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all border flex items-center gap-1 ${
-                            currentMode === cat.id
-                              ? "bg-blue-600 text-white border-blue-600 shadow-md scale-105"
-                              : groupName === "Risk"
-                                ? "bg-white text-red-700 border-red-100 hover:bg-red-50"
-                                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-blue-200"
-                          }`}
-                        >
-                          {cat.label}
-                        </button>
-                      ),
+                      (cat) => {
+                        // 選択済みかどうかチェック
+                        const isSelected = currentModes.includes(cat.id);
+
+                        return (
+                          <button
+                            key={cat.id}
+                            onClick={() => toggleMode(cat.id)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all border flex items-center gap-1 ${
+                              isSelected
+                                ? "bg-blue-600 text-white border-blue-600 shadow-md scale-105 ring-2 ring-blue-200 ring-offset-1"
+                                : groupName === "Risk"
+                                  ? "bg-white text-red-700 border-red-100 hover:bg-red-50"
+                                  : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-blue-200"
+                            }`}
+                          >
+                            {isSelected && <span>✓</span>}
+                            {cat.label}
+                          </button>
+                        );
+                      },
                     )}
                   </div>
                 ))}
               </div>
 
-              {/* 3. Description Box */}
-              {currentMode && (
+              {/* 複数選択時の説明表示 */}
+              {currentModes.length > 0 && (
                 <div className="mt-6 bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start gap-3">
                   <span className="text-xl">💡</span>
                   <div>
                     <div className="text-xs font-bold text-blue-600 uppercase mb-1">
-                      Current Filter
+                      Selected Filters (AND条件)
                     </div>
-                    <p className="text-sm font-bold text-gray-800">
-                      {CATEGORIES.find((c) => c.id === currentMode)?.desc}
-                    </p>
+                    <ul className="text-sm font-bold text-gray-800 list-disc list-inside">
+                      {currentModes.map((mode) => (
+                        <li key={mode}>
+                          {CATEGORIES.find((c) => c.id === mode)?.desc}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               )}
@@ -470,7 +498,6 @@ export default function MarketPage() {
           )}
         </div>
 
-        {/* Stock Grid */}
         {loading ? (
           <div className="py-20 text-center text-gray-400">
             Scanning Market Data...

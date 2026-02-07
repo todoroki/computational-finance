@@ -13,23 +13,21 @@ class Query:
         self,
         search: Optional[str] = None,
         status: Optional[str] = None,
-        ranking_mode: Optional[str] = None,
-        sector: Optional[str] = None,  # ★追加: セクター引数
-        limit: int = 50,  # デフォルト50件に変更（Frontendに合わせて）
+        # ▼ 修正: リストで受け取る (デフォルトNone)
+        ranking_modes: Optional[List[str]] = None,
+        sector: Optional[str] = None,
+        limit: int = 50,
         offset: int = 0,
         sort_by: Optional[str] = "code",
         sort_order: Optional[str] = "asc",
     ) -> List[StockType]:
 
-        # 基本クエリ (N+1問題対策)
+        # 基本クエリ
         qs = Stock.objects.prefetch_related("analysis_results").all()
-
-        # ---------------------------------------------------------
-        # 1. 検索 & 基本フィルタ
-        # ---------------------------------------------------------
+        # 分析結果があるものに限定
         qs = qs.filter(analysis_results__isnull=False).distinct()
 
-        # 🔍 検索
+        # --- 1. 基本フィルタ ---
         if search:
             qs = qs.filter(
                 Q(code__icontains=search)
@@ -37,95 +35,98 @@ class Query:
                 | Q(japanese_name__icontains=search)
             )
 
-        # 🏢 業種フィルタ (★追加)
         if sector and sector != "All":
             qs = qs.filter(sector_17_code_name=sector)
 
-        # 📊 ステータスフィルタ
         if status:
             qs = qs.filter(analysis_results__status=status)
 
-        # ---------------------------------------------------------
-        # 2. ランキングモード (Frontendの12ボタンに対応)
-        # ---------------------------------------------------------
-        if ranking_mode:
-            # === Special: AI推奨 ===
-            if ranking_mode == "strong_buy":
-                # Strong Buy / Buy を抽出し、Fスコア(質)順
-                qs = qs.filter(analysis_results__status__in=["Strong Buy", "Buy"])
-                qs = qs.order_by("-analysis_results__f_score")
+        # --- 2. ランキングモード (複数選択対応) ---
 
-            # === Layer 1: Safety (安全性) ===
-            elif ranking_mode == "safety_shield":
-                qs = qs.filter(analysis_results__tag_safety_shield=True)
-                qs = qs.order_by("-analysis_results__z_score")
+        # モードごとの「フィルタ条件(Q)」と「ソート順」の定義マップ
+        # format: "mode_id": (Filter_Q, Sort_Field)
+        MODE_MAP = {
+            # === Special ===
+            "strong_buy": (
+                Q(analysis_results__status__in=["Strong Buy", "Buy"]),
+                "-analysis_results__f_score",
+            ),
+            # === Safety ===
+            "safety_shield": (
+                Q(analysis_results__tag_safety_shield=True),
+                "-analysis_results__z_score",
+            ),
+            "quality_growth": (
+                Q(analysis_results__tag_quality_growth=True),
+                "-analysis_results__gross_profitability",
+            ),
+            "institutional": (
+                Q(analysis_results__tag_institutional=True),
+                "-analysis_results__f_score",
+            ),
+            # === Character ===
+            "gap_opportunities": (
+                Q(analysis_results__expectation_gap__lt=0),
+                "analysis_results__expectation_gap",
+            ),
+            "cash_cow": (
+                Q(analysis_results__tag_cash_cow=True),
+                "-analysis_results__free_cash_flow",
+            ),
+            "single_engine": (
+                Q(analysis_results__tag_single_engine=True),
+                "-analysis_results__actual_revenue_growth",
+            ),
+            "silent_improver": (
+                Q(analysis_results__tag_silent_improver=True),
+                "-analysis_results__f_score",
+            ),
+            "turnaround": (
+                Q(analysis_results__tag_turnaround=True),
+                "-analysis_results__net_income",
+            ),
+            # === Risk ===
+            "zombie": (
+                Q(analysis_results__tag_zombie=True),
+                "analysis_results__z_score",
+            ),
+            "accounting_risk": (
+                Q(analysis_results__tag_accounting_risk=True),
+                "analysis_results__operating_cf",
+            ),
+            "high_volatility": (
+                Q(analysis_results__tag_high_volatility=True),
+                "-analysis_results__expectation_gap",
+            ),
+            "fragile": (
+                Q(analysis_results__tag_fragile=True),
+                "-analysis_results__expectation_gap",
+            ),
+        }
 
-            elif ranking_mode == "quality_growth":
-                qs = qs.filter(analysis_results__tag_quality_growth=True)
-                qs = qs.order_by("-analysis_results__gross_profitability")
+        primary_sort_key = None
 
-            elif ranking_mode == "institutional":  # ★追加
-                qs = qs.filter(analysis_results__tag_institutional=True)
-                qs = qs.order_by("-analysis_results__f_score")
+        if ranking_modes:
+            for mode in ranking_modes:
+                if mode in MODE_MAP:
+                    filter_q, sort_key = MODE_MAP[mode]
+                    # AND条件で絞り込み
+                    qs = qs.filter(filter_q)
 
-            # === Layer 2: Character (性格) ===
-            elif ranking_mode == "gap_opportunities":
-                # 割安放置: マイナス乖離が大きい順 (重複を統合)
-                qs = qs.filter(analysis_results__expectation_gap__lt=0)
-                qs = qs.order_by("analysis_results__expectation_gap")
+                    # 最初のモードのソート順を優先採用する
+                    if primary_sort_key is None:
+                        primary_sort_key = sort_key
 
-            elif ranking_mode == "gap_overheated":  # (念のため残し)
-                qs = qs.filter(analysis_results__expectation_gap__gt=0)
-                qs = qs.order_by("-analysis_results__expectation_gap")
+        # --- 3. ソート適用 ---
+        # ランキングモードの指定があれば、その最初のモードの基準でソート
+        if primary_sort_key:
+            qs = qs.order_by(primary_sort_key)
 
-            elif ranking_mode == "cash_cow":  # ★追加
-                qs = qs.filter(analysis_results__tag_cash_cow=True)
-                qs = qs.order_by("-analysis_results__free_cash_flow")
-
-            elif ranking_mode == "single_engine":
-                # 片肺飛行: 売上成長率順 (重複を統合)
-                qs = qs.filter(analysis_results__tag_single_engine=True)
-                qs = qs.order_by("-analysis_results__actual_revenue_growth")
-
-            elif ranking_mode == "silent_improver":  # ★追加
-                qs = qs.filter(analysis_results__tag_silent_improver=True)
-                qs = qs.order_by("-analysis_results__f_score")
-
-            elif ranking_mode == "turnaround":
-                # 復活: 黒字転換など
-                qs = qs.filter(analysis_results__tag_turnaround=True)
-                qs = qs.order_by("-analysis_results__net_income")
-
-            # === Layer 3: Risk (警告) ===
-            elif ranking_mode == "zombie":  # ★追加
-                # ゾンビ: Zスコアが低い順（より危険な順）
-                qs = qs.filter(analysis_results__tag_zombie=True)
-                qs = qs.order_by("analysis_results__z_score")
-
-            elif ranking_mode == "accounting_risk":  # ★追加
-                qs = qs.filter(analysis_results__tag_accounting_risk=True)
-                qs = qs.order_by("analysis_results__operating_cf")
-
-            elif ranking_mode == "high_volatility":  # ★追加
-                qs = qs.filter(analysis_results__tag_high_volatility=True)
-                qs = qs.order_by("-analysis_results__expectation_gap")
-
-            elif ranking_mode == "fragile":  # ★追加
-                qs = qs.filter(analysis_results__tag_fragile=True)
-                qs = qs.order_by("-analysis_results__expectation_gap")
-
-            # フォールバック
-            else:
-                qs = qs.order_by("code")
-
-        # ---------------------------------------------------------
-        # 3. 通常ソート (ランキングモード指定がない場合)
-        # ---------------------------------------------------------
+        # 指定がなければ通常のソート引数を使用
         else:
             if sort_by == "status":
                 qs = qs.annotate(
                     status_rank=Case(
-                        # ★元の詳細な定義を維持・復元
                         When(analysis_results__status="Strong Buy", then=Value(5)),
                         When(analysis_results__status="Buy", then=Value(4)),
                         When(analysis_results__status="Buy (Spec)", then=Value(3)),
@@ -141,24 +142,18 @@ class Query:
 
             elif sort_by == "code":
                 qs = qs.order_by("code")
-
             elif sort_by == "z_score":
                 prefix = "-" if sort_order == "desc" else ""
                 qs = qs.order_by(f"{prefix}analysis_results__z_score")
-
             elif sort_by == "f_score":
                 prefix = "-" if sort_order == "desc" else ""
                 qs = qs.order_by(f"{prefix}analysis_results__f_score")
-
             elif sort_by == "gp":
                 prefix = "-" if sort_order == "desc" else ""
                 qs = qs.order_by(f"{prefix}analysis_results__gross_profitability")
-
             else:
-                prefix = "-" if sort_order == "desc" else ""
-                qs = qs.order_by(f"{prefix}code")
+                qs = qs.order_by("code")
 
-        # ✂️ 4. ページネーション
         return qs[offset : offset + limit]
 
     @strawberry.field

@@ -1,7 +1,7 @@
 query GetStocks(
   $search: String
   $status: String # ★復活: これがないとステータス絞り込みができない
-  $rankingMode: String
+  $rankingModes: [String!] # ★ここを修正（配列にする）
   $sector: String
   $limit: Int
   $offset: Int
@@ -11,7 +11,7 @@ query GetStocks(
   stocks(
     search: $search
     status: $status # ★復活
-    rankingMode: $rankingMode
+    rankingModes: $rankingModes # ★ここも修正
     sector: $sector
     limit: $limit
     offset: $offset
