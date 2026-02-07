@@ -1,9 +1,7 @@
 "use client";
 
 import React, { use, useState } from "react";
-// ▼ 修正: 指摘通りのパスに変更
-import { useQuery } from "@apollo/client/react";
-// ▼ 追加: 生成された型定義をimport
+import { useQuery } from "@apollo/client/react"; // 修正済みのパス
 import { GetStockDetailDocument, GetStockDetailQuery } from "@/lib/gql/graphql";
 import Link from "next/link";
 import TradingViewWidget from "@/components/TradingViewWidget";
@@ -11,13 +9,10 @@ import StockFinancialChart from "@/components/StockFinancialChart";
 import AddToPortfolioModal from "@/components/AddToPortfolioModal";
 
 // --- Type Definitions ---
-
-// GraphQLの型からAnalysisResultの型を抽出 (Utility Type)
 type StockDetail = NonNullable<GetStockDetailQuery["stock"]>;
 type AnalysisResult = NonNullable<StockDetail["analysisResults"]>[number];
 
-// --- Helper Functions & Definitions ---
-
+// --- Helper Functions ---
 const formatCurrency = (val?: number | null) => {
   if (val === undefined || val === null) return "---";
   if (val >= 1_000_000_000_000)
@@ -26,7 +21,11 @@ const formatCurrency = (val?: number | null) => {
   return `¥${val.toLocaleString()}`;
 };
 
-// タグ定義のキーを AnalysisResult のキーに制限することで型安全にする
+// ▼▼▼ 追加: 指標表示用のフォーマッター ▼▼▼
+const fmt = (val?: number | null, unit = "", fixed = 1) =>
+  val !== undefined && val !== null ? `${val.toFixed(fixed)}${unit}` : "---";
+
+// --- Tag Definitions ---
 type TagKey = keyof AnalysisResult & string;
 
 const TAG_DEFINITIONS: Partial<
@@ -89,8 +88,6 @@ const TAG_DEFINITIONS: Partial<
   },
 };
 
-// ... (TRANSLATIONS は変更なしなので省略) ...
-// 診断ステータスの日本語訳
 const TRANSLATIONS: Record<string, string> = {
   "Strong Buy": "買い推奨 (Strong Buy)",
   Buy: "買い (Buy)",
@@ -98,16 +95,30 @@ const TRANSLATIONS: Record<string, string> = {
   Sell: "売り (Sell)",
   "Strong Sell": "売り推奨 (Strong Sell)",
   Avoid: "見送り推奨 (Avoid)",
-  Stable: "安定期",
-  Growth: "成長期",
-  Mature: "成熟期",
-  Decline: "衰退・低迷期",
-  Distress: "経営危機",
+
+  // ▼▼▼ 企業のライフサイクル (State) ▼▼▼
+  Stable: "安定期 (Stable)",
+  Growth: "成長期 (Growth)",
+  Mature: "成熟期 (Mature)",
+  Decline: "衰退期 (Decline)",
+
+  // ここを修正！
+  // "Distress": "財務危機",  // ← 違和感がある
+  "Financial Distress": "危険水域・再建期 (Distress)", // ← これなら「時期」と「状態」両方伝わる
+
+  Deteriorating: "悪化局面 (Deteriorating)", // 追加: 状態が悪くなっている途中
+  "Cash Generator": "安定収益期 (Cash Cow)", // 追加: 成熟して金を稼いでいる
+  "High Growth": "急成長期 (High Growth)", // 追加: イケイケな時期
+
+  // ▼▼▼ 市場の期待 (Expectation) ▼▼▼
   Overheated: "過熱 (期待しすぎ)",
   High: "高期待",
   Moderate: "適正水準",
   Low: "悲観的",
   Undervalued: "割安放置",
+  "Single Engine": "片肺飛行 (売上偏重)", // 追加
+
+  // ▼▼▼ リスクレベル ▼▼▼
   Critical: "危機的",
   "High Risk": "高い",
   Medium: "中程度",
@@ -115,7 +126,7 @@ const TRANSLATIONS: Record<string, string> = {
   Safe: "極めて安全",
 };
 
-// ... (InfoLabel, TagDescriptionBox も変更なしなので省略) ...
+// --- Components ---
 const InfoLabel = ({ label, desc }: { label: string; desc: string }) => (
   <div className="group relative flex items-center gap-1 cursor-help w-fit">
     <span className="text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-dotted border-gray-400">
@@ -130,7 +141,6 @@ const InfoLabel = ({ label, desc }: { label: string; desc: string }) => (
 
 const TagDescriptionBox = ({ tagKey }: { tagKey: string | null }) => {
   if (!tagKey) return null;
-  // TAG_DEFINITIONSの型安全性を確保しているため安全にアクセス可能
   const tag = TAG_DEFINITIONS[tagKey as TagKey];
   if (!tag) return null;
 
@@ -158,12 +168,9 @@ export default function StockDetailPage({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
-  // useQueryの型引数に生成された型を指定
   const { data, loading, error } = useQuery<GetStockDetailQuery>(
     GetStockDetailDocument,
-    {
-      variables: { code },
-    },
+    { variables: { code } },
   );
 
   if (loading)
@@ -188,11 +195,8 @@ export default function StockDetailPage({
   const stock = data.stock;
   const analysis = stock.analysisResults?.[0];
 
-  // ▼ 修正: anyを使わずに型安全にフィルタリング
   const activeTags = (Object.keys(TAG_DEFINITIONS) as TagKey[]).filter(
     (key) => {
-      // analysisが存在し、かつそのキーの値が truthy であることを確認
-      // key は TagKey (AnalysisResultのキー) なので型安全
       return analysis && analysis[key];
     },
   );
@@ -204,7 +208,6 @@ export default function StockDetailPage({
     })) || [];
 
   return (
-    // ... (JSX部分は以前と同じなので省略せず記述しますが、長いので変更点のみ確認してください)
     <div className="min-h-screen bg-slate-50 pb-24 font-sans">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-20">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -342,6 +345,109 @@ export default function StockDetailPage({
           </div>
         </div>
 
+        {/* ▼▼▼ 追加: Fundamentals Card (基礎指標) ▼▼▼ */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-6 flex items-center gap-2">
+            📊 Fundamentals{" "}
+            <span className="text-xs font-normal text-gray-400">
+              基礎スペック
+            </span>
+          </h3>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-y-6 gap-x-4">
+            {/* 1. 割安性 */}
+            <div>
+              <div className="text-xs text-gray-400 font-bold mb-1">
+                PER (株価収益率)
+              </div>
+              <div className="text-xl font-mono font-bold text-gray-800">
+                {fmt(analysis?.per, "倍")}
+              </div>
+              <div className="text-[10px] text-gray-400">
+                目安: 15倍以下で割安
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 font-bold mb-1">
+                PBR (株価純資産倍率)
+              </div>
+              <div className="text-xl font-mono font-bold text-gray-800">
+                {fmt(analysis?.pbr, "倍", 2)}
+              </div>
+              <div className="text-[10px] text-gray-400">
+                目安: 1.0倍割れは解散価値以下
+              </div>
+            </div>
+
+            {/* 2. 効率性 */}
+            <div>
+              <div className="text-xs text-gray-400 font-bold mb-1">
+                ROE (自己資本利益率)
+              </div>
+              <div
+                className={`text-xl font-mono font-bold ${(analysis?.roe ?? 0) > 10 ? "text-blue-600" : "text-gray-800"}`}
+              >
+                {fmt(analysis?.roe, "%")}
+              </div>
+              <div className="text-[10px] text-gray-400">
+                目安: 8%以上で優良
+              </div>
+            </div>
+
+            {/* 3. 配当・還元 */}
+            <div>
+              <div className="text-xs text-gray-400 font-bold mb-1">
+                配当利回り
+              </div>
+              <div
+                className={`text-xl font-mono font-bold ${(analysis?.dividendYield ?? 0) > 3.5 ? "text-green-600" : "text-gray-800"}`}
+              >
+                {fmt(analysis?.dividendYield, "%", 2)}
+              </div>
+              <div className="text-[10px] text-gray-400">3.5%以上は高配当</div>
+            </div>
+
+            {/* 4. 安全性 */}
+            <div className="border-t border-gray-50 pt-4 md:border-none md:pt-0">
+              <div className="text-xs text-gray-400 font-bold mb-1">
+                自己資本比率
+              </div>
+              <div className="text-lg font-mono font-bold text-gray-800">
+                {fmt(analysis?.equityRatio, "%")}
+              </div>
+            </div>
+            <div className="border-t border-gray-50 pt-4 md:border-none md:pt-0">
+              <div className="text-xs text-gray-400 font-bold mb-1">
+                EPS (1株益)
+              </div>
+              <div className="text-lg font-mono font-bold text-gray-800">
+                ¥{analysis?.eps?.toFixed(0) ?? "---"}
+              </div>
+            </div>
+            <div className="border-t border-gray-50 pt-4 md:border-none md:pt-0">
+              <div className="text-xs text-gray-400 font-bold mb-1">
+                BPS (1株純資産)
+              </div>
+              <div className="text-lg font-mono font-bold text-gray-800">
+                ¥{analysis?.bps?.toFixed(0) ?? "---"}
+              </div>
+            </div>
+            <div className="border-t border-gray-50 pt-4 md:border-none md:pt-0">
+              <div className="text-xs text-gray-400 font-bold mb-1">
+                直近FCF
+              </div>
+              <div
+                className={`text-lg font-mono font-bold ${(analysis?.freeCashFlow ?? 0) > 0 ? "text-gray-800" : "text-red-500"}`}
+              >
+                {analysis?.freeCashFlow
+                  ? (analysis.freeCashFlow / 100000000).toFixed(0) + "億円"
+                  : "---"}
+              </div>
+            </div>
+          </div>
+        </div>
+        {/* ▲▲▲ 追加終わり ▲▲▲ */}
+
         {/* 2. Reality Gap & Diagnosis Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
@@ -469,6 +575,8 @@ export default function StockDetailPage({
           </div>
         </div>
       </main>
+
+      {/* Modal */}
       <AddToPortfolioModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

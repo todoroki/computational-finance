@@ -5,44 +5,34 @@ query GetStockDetail($code: String!) {
     japaneseName
     market
     japaneseMarket
-    sector
-    japaneseSector
-    description 
-
+    sector17CodeName
+    description
+    
     analysisResults {
       date
       stockPrice
       marketCap
-
-      # === 这里的核心追加！ ===
-      # 総合判定
+      
+      # --- AI Diagnosis ---
       status
-      isGoodBuy
       aiSummary
-
-      # Lens 1: Safety & Quality (安全・質)
-      zScore # 倒産リスク
-      fScore # 財務健全性
-      accrualsRatio # 利益の質
-      # Lens 2: Structure (構造)
-      grossProfitability # 稼ぐ力
-      roiic # 投資効率
-      # Lens 3: Expectation (期待)
-      impliedGrowthRate # 逆算DCF
-      # =======================
-
-      impliedRevenueGrowth # ★ 売上ベース
-      actualRevenueGrowth # ★追加
-      expectationGap # ★追加
-      state # 企業の健康状態
-      expectationStructure # 期待の構造
-      riskLevel # リスクレベル
-      riskDetails # リスク詳細
-      # --- ▼▼▼ 追加: 性格タグ (キャメルケースに注意) ▼▼▼ ---
+      riskLevel
+      riskDetails
+      state
+      expectationStructure
+      
+      # --- Scores ---
+      zScore
+      fScore
+      expectationGap
+      impliedRevenueGrowth
+      actualRevenueGrowth
+      
+      # --- Tags ---
       tagSafetyShield
-      tagCashCow
       tagQualityGrowth
       tagInstitutional
+      tagCashCow
       tagSingleEngine
       tagHighVolatility
       tagSilentImprover
@@ -50,11 +40,23 @@ query GetStockDetail($code: String!) {
       tagZombie
       tagAccountingRisk
       tagFragile
+
+      # ▼▼▼ 追加: Phase 3 基礎ファンダメンタルズ ▼▼▼
+      per
+      pbr
+      roe
+      roa
+      eps
+      bps
+      equityRatio
+      dividendYield
+      freeCashFlow
     }
 
     financials {
       fiscalYear
       quarter
+      periodEnd
       revenue
       operatingIncome
       netIncome
@@ -62,8 +64,7 @@ query GetStockDetail($code: String!) {
       investingCf
       financingCf
       totalAssets
-      totalEquity # netAssetsから名前変わりました
-      periodEnd
+      totalEquity
     }
   }
 }

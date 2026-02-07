@@ -50,6 +50,18 @@ class AnalysisResultType:
     operating_cf: float | None
     net_income: float | None
 
+    # ▼▼▼ Phase 3 追加: 基礎ファンダメンタルズ ▼▼▼
+    # これらを AnalysisResultType に追加してください
+    per: float | None
+    pbr: float | None
+    roe: float | None
+    roa: float | None
+    eps: float | None
+    bps: float | None
+    equity_ratio: float | None
+    dividend_yield: float | None
+    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
     # ▼▼▼ 11個のタグ (完全網羅) ▼▼▼
     tag_safety_shield: bool
     tag_quality_growth: bool
