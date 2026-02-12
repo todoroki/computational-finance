@@ -7,6 +7,8 @@ import Link from "next/link";
 import TradingViewWidget from "@/components/TradingViewWidget";
 import StockFinancialChart from "@/components/StockFinancialChart";
 import AddToPortfolioModal from "@/components/AddToPortfolioModal";
+// ▼▼▼ 追加: ナラティブ生成エンジンをインポート ▼▼▼
+import { generateNarratives } from "@/lib/narrativeGenerator";
 
 // --- Type Definitions ---
 type StockDetail = NonNullable<GetStockDetailQuery["stock"]>;
@@ -21,6 +23,15 @@ const formatCurrency = (val?: number | null) => {
   return `¥${val.toLocaleString()}`;
 };
 
+// ▼ 1. リスク詳細の翻訳用辞書を追加
+const RISK_TRANSLATIONS: Record<string, string> = {
+  "Weak Fundamentals": "基礎的財務の脆弱性",
+  "Bankruptcy Risk": "倒産リスク水域",
+  "Earnings Manipulation": "利益調整の疑い",
+  "Distress Zone": "経営危険水域",
+  "High Accruals": "利益の質が低い(現金裏付けなし)",
+  "No FCF": "フリーキャッシュフロー赤字",
+};
 // ▼▼▼ 追加: 指標表示用のフォーマッター ▼▼▼
 const fmt = (val?: number | null, unit = "", fixed = 1) =>
   val !== undefined && val !== null ? `${val.toFixed(fixed)}${unit}` : "---";
@@ -88,42 +99,99 @@ const TAG_DEFINITIONS: Partial<
   },
 };
 
-const TRANSLATIONS: Record<string, string> = {
-  "Strong Buy": "買い推奨 (Strong Buy)",
-  Buy: "買い (Buy)",
-  Neutral: "中立 (Neutral)",
-  Sell: "売り (Sell)",
-  "Strong Sell": "売り推奨 (Strong Sell)",
-  Avoid: "見送り推奨 (Avoid)",
+// const TRANSLATIONS: Record<string, string> = {
+//   "Strong Buy": "買い推奨 (Strong Buy)",
+//   Buy: "買い (Buy)",
+//   Neutral: "中立 (Neutral)",
+//   Sell: "売り (Sell)",
+//   "Strong Sell": "売り推奨 (Strong Sell)",
+//   Avoid: "見送り推奨 (Avoid)",
 
-  // ▼▼▼ 企業のライフサイクル (State) ▼▼▼
+//   // ▼▼▼ 企業のライフサイクル (State) ▼▼▼
+//   Stable: "安定期 (Stable)",
+//   Growth: "成長期 (Growth)",
+//   Mature: "成熟期 (Mature)",
+//   Decline: "衰退期 (Decline)",
+
+//   // ここを修正！
+//   // "Distress": "財務危機",  // ← 違和感がある
+//   "Financial Distress": "危険水域・再建期 (Distress)", // ← これなら「時期」と「状態」両方伝わる
+
+//   Deteriorating: "悪化局面 (Deteriorating)", // 追加: 状態が悪くなっている途中
+//   "Cash Generator": "安定収益期 (Cash Cow)", // 追加: 成熟して金を稼いでいる
+//   "High Growth": "急成長期 (High Growth)", // 追加: イケイケな時期
+
+//   // ▼▼▼ 市場の期待 (Expectation) ▼▼▼
+//   Overheated: "過熱 (期待しすぎ)",
+//   High: "高期待",
+//   Moderate: "適正水準",
+//   Low: "悲観的",
+//   Undervalued: "割安放置",
+//   "Single Engine": "片肺飛行 (売上偏重)", // 追加
+
+//   // ▼▼▼ リスクレベル ▼▼▼
+//   Critical: "危機的",
+//   "High Risk": "高い",
+//   Medium: "中程度",
+//   "Low Risk": "低い",
+//   Safe: "極めて安全",
+// };
+
+// A. 企業の状態 (State)
+const STATE_TRANSLATIONS: Record<string, string> = {
   Stable: "安定期 (Stable)",
   Growth: "成長期 (Growth)",
   Mature: "成熟期 (Mature)",
   Decline: "衰退期 (Decline)",
+  Distress: "危険水域・再建期 (Distress)",
+  Deteriorating: "業績悪化局面 (Deteriorating)",
+  "Cash Generator": "高収益安定期 (Cash Cow)",
+  "High Growth": "急成長期 (High Growth)",
+  Unclear: "判断不能",
+};
 
-  // ここを修正！
-  // "Distress": "財務危機",  // ← 違和感がある
-  "Financial Distress": "危険水域・再建期 (Distress)", // ← これなら「時期」と「状態」両方伝わる
+// B. 市場の期待 (Expectation)
+const EXPECTATION_TRANSLATIONS: Record<string, string> = {
+  Overheated: "🔥 過熱 (Overheated)",
+  High: "高期待 (High)", // ★ここでの High は「期待が高い」
+  Moderate: "適正 (Moderate)",
+  Low: "悲観 (Low)",
+  Underestimated: "💎 過小評価 (Underestimated)",
+  "Single Engine": "片肺飛行 (売上偏重)",
+  Optimistic: "楽観的",
+  Neutral: "中立",
+};
 
-  Deteriorating: "悪化局面 (Deteriorating)", // 追加: 状態が悪くなっている途中
-  "Cash Generator": "安定収益期 (Cash Cow)", // 追加: 成熟して金を稼いでいる
-  "High Growth": "急成長期 (High Growth)", // 追加: イケイケな時期
+// C. リスクレベル (Risk Level)
+const RISK_LEVEL_TRANSLATIONS: Record<string, string> = {
+  Critical: "💀 危機的 (Critical)",
+  High: "⚠️ 高い (High)", // ★ここでの High は「リスクが高い」
+  Medium: "⚠️ 中程度 (Medium)",
+  Low: "✅ 低い (Low)",
+};
 
-  // ▼▼▼ 市場の期待 (Expectation) ▼▼▼
-  Overheated: "過熱 (期待しすぎ)",
-  High: "高期待",
-  Moderate: "適正水準",
-  Low: "悲観的",
-  Undervalued: "割安放置",
-  "Single Engine": "片肺飛行 (売上偏重)", // 追加
+// D. リスク詳細 (Risk Details) - さっき追加したもの
+const RISK_DETAIL_TRANSLATIONS: Record<string, string> = {
+  "Weak Fundamentals": "基礎的財務の脆弱性",
+  "Bankruptcy Risk": "倒産リスク水域",
+  "Earnings Manipulation": "利益調整の疑い",
+  "Distress Zone": "経営危険水域",
+  "High Accruals": "利益の質が低い",
+  "No FCF": "FCF赤字",
+  Volatile: "業績不安定",
+};
 
-  // ▼▼▼ リスクレベル ▼▼▼
-  Critical: "危機的",
-  "High Risk": "高い",
-  Medium: "中程度",
-  "Low Risk": "低い",
-  Safe: "極めて安全",
+// E. 総合判定 (Status)
+const STATUS_TRANSLATIONS: Record<string, string> = {
+  "Strong Buy": "買い推奨 (Strong Buy)",
+  Buy: "買い (Buy)",
+  "Buy (Spec)": "投機買い (Spec)",
+  Neutral: "中立 (Neutral)",
+  Sell: "売り (Sell)",
+  "Strong Sell": "売り推奨 (Strong Sell)",
+  Avoid: "見送り推奨 (Avoid)",
+  Watch: "監視 (Watch)",
+  Hold: "保持 (Hold)",
 };
 
 // --- Components ---
@@ -173,10 +241,19 @@ export default function StockDetailPage({
     { variables: { code } },
   );
 
+  // ▼ 2. リスク詳細を日本語に変換するヘルパー
+  const translateRiskDetails = (details: string | null) => {
+    if (!details) return null;
+    return details
+      .split(", ")
+      .map((d) => RISK_TRANSLATIONS[d] || d)
+      .join("・");
+  };
+
   if (loading)
     return (
       <div className="min-h-screen flex justify-center items-center text-gray-400 font-mono">
-          Scanning StockMRI...
+        Scanning StockMRI...
       </div>
     );
   if (error)
@@ -194,6 +271,12 @@ export default function StockDetailPage({
 
   const stock = data.stock;
   const analysis = stock.analysisResults?.[0];
+  // ▼▼▼ 追加: StockMRI 診断レポートを生成 ▼▼▼
+  // ここで配列が返ってきます (例: [ゾンビ企業, 金利耐性低, ...])
+  const narratives = generateNarratives(
+    stock.japaneseName || stock.name,
+    analysis,
+  );
 
   const activeTags = (Object.keys(TAG_DEFINITIONS) as TagKey[]).filter(
     (key) => {
@@ -305,9 +388,11 @@ export default function StockDetailPage({
                   AI Verdict
                 </span>
                 <span className="text-lg font-black text-center leading-tight px-2">
-                  {TRANSLATIONS[analysis?.status ?? ""] ||
-                    analysis?.status ||
-                    "-"}
+                  <span className="text-lg font-black text-center leading-tight px-2">
+                    {STATUS_TRANSLATIONS[analysis?.status ?? ""] ||
+                      analysis?.status ||
+                      "-"}
+                  </span>
                 </span>
               </div>
 
@@ -344,6 +429,107 @@ export default function StockDetailPage({
             </div>
           </div>
         </div>
+
+        {/* ▼▼▼ ここに追加！ StockMRI 診断レポートセクション ▼▼▼ */}
+        <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+            🩺 StockMRI Diagnosis{" "}
+            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px]">
+              AI Report
+            </span>
+          </h3>
+
+          <div className="grid grid-cols-1 gap-4">
+            {narratives.map((narrative) => (
+              <div
+                key={narrative.id}
+                className={`rounded-2xl p-5 border shadow-sm flex items-start gap-4 transition-all hover:shadow-md ${
+                  narrative.type === "critical"
+                    ? "bg-red-50 border-red-200"
+                    : narrative.type === "warning"
+                      ? "bg-amber-50 border-amber-200"
+                      : narrative.type === "success"
+                        ? "bg-indigo-50 border-indigo-200"
+                        : narrative.type === "opportunity"
+                          ? "bg-emerald-50 border-emerald-200"
+                          : "bg-white border-gray-200"
+                }`}
+              >
+                {/* Icon */}
+                <div className="text-3xl bg-white/80 w-12 h-12 flex items-center justify-center rounded-full shadow-sm flex-shrink-0">
+                  {narrative.icon}
+                </div>
+
+                {/* Content */}
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    {/* バッジ表示 */}
+                    {narrative.type === "critical" && (
+                      <span className="text-[10px] font-black bg-red-600 text-white px-2 py-0.5 rounded uppercase tracking-wide">
+                        Critical
+                      </span>
+                    )}
+                    {narrative.type === "warning" && (
+                      <span className="text-[10px] font-black bg-amber-500 text-white px-2 py-0.5 rounded uppercase tracking-wide">
+                        Warning
+                      </span>
+                    )}
+                    {narrative.type === "success" && (
+                      <span className="text-[10px] font-black bg-indigo-600 text-white px-2 py-0.5 rounded uppercase tracking-wide">
+                        Excellent
+                      </span>
+                    )}
+                    {narrative.type === "opportunity" && (
+                      <span className="text-[10px] font-black bg-emerald-600 text-white px-2 py-0.5 rounded uppercase tracking-wide">
+                        Opportunity
+                      </span>
+                    )}
+
+                    <h3
+                      className={`text-base font-bold ${
+                        narrative.type === "critical"
+                          ? "text-red-900"
+                          : narrative.type === "warning"
+                            ? "text-amber-900"
+                            : narrative.type === "success"
+                              ? "text-indigo-900"
+                              : narrative.type === "opportunity"
+                                ? "text-emerald-900"
+                                : "text-gray-900"
+                      }`}
+                    >
+                      {narrative.title}
+                    </h3>
+                  </div>
+
+                  <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-line mb-3 font-medium">
+                    {narrative.body}
+                  </p>
+
+                  <div
+                    className={`px-3 py-2 rounded-lg border inline-flex items-start gap-2 w-full md:w-auto ${
+                      narrative.type === "critical"
+                        ? "bg-red-100/50 border-red-200 text-red-800"
+                        : narrative.type === "warning"
+                          ? "bg-amber-100/50 border-amber-200 text-amber-800"
+                          : narrative.type === "success"
+                            ? "bg-indigo-100/50 border-indigo-200 text-indigo-800"
+                            : narrative.type === "opportunity"
+                              ? "bg-emerald-100/50 border-emerald-200 text-emerald-800"
+                              : "bg-gray-50 border-gray-200 text-gray-600"
+                    }`}
+                  >
+                    <span className="text-xs mt-0.5">💡</span>
+                    <span className="text-xs font-bold">
+                      {narrative.advice}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+        {/* ▲▲▲ 追加終わり ▲▲▲ */}
 
         {/* ▼▼▼ 追加: Fundamentals Card (基礎指標) ▼▼▼ */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
@@ -514,41 +700,45 @@ export default function StockDetailPage({
             </div>
           </div>
 
+          {/* Corporate Diagnosis Section */}
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
             <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-6">
-              企業状態診断{" "}
-              <span className="text-xs font-normal text-gray-400 ml-1">
-                Corporate Diagnosis
-              </span>
+              Corporate Diagnosis
             </h3>
             <div className="space-y-4">
+              {/* 1. State */}
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <InfoLabel
                   label="企業のライフサイクル"
                   desc="企業の成長段階。Growth（成長期）、Mature（成熟期）、Decline（衰退期）など。"
                 />
                 <span className="font-bold text-gray-800">
-                  {TRANSLATIONS[analysis?.state ?? ""] || analysis?.state}
+                  {/* ▼ 修正: 専用辞書を使用 */}
+                  {STATE_TRANSLATIONS[analysis?.state ?? ""] || analysis?.state}
                 </span>
               </div>
 
+              {/* 2. Expectation */}
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <InfoLabel
                   label="市場の期待水準"
                   desc="現在の株価に織り込まれている期待の高さ。Overheated（過熱）の場合は、好決算でも株価が下がるリスクがあります。"
                 />
                 <span className="font-bold text-gray-800">
-                  {TRANSLATIONS[analysis?.expectationStructure ?? ""] ||
-                    analysis?.expectationStructure}
+                  {/* ▼ 修正: 専用辞書を使用 */}
+                  {EXPECTATION_TRANSLATIONS[
+                    analysis?.expectationStructure ?? ""
+                  ] || analysis?.expectationStructure}
                 </span>
               </div>
 
+              {/* 3. Risk Level */}
               <div
                 className={`flex items-center justify-between p-3 rounded-lg border ${
                   analysis?.riskLevel === "Critical"
                     ? "bg-red-50 border-red-200 text-red-700"
                     : analysis?.riskLevel === "High"
-                      ? "bg-orange-50 border-orange-200 text-orange-700"
+                      ? "bg-orange-50 border-orange-200 text-orange-700" // Highならオレンジ
                       : "bg-green-50 border-green-200 text-green-700"
                 }`}
               >
@@ -557,13 +747,14 @@ export default function StockDetailPage({
                   desc="財務健全性、収益性、期待値の偏りなどを総合的に判断したリスクレベル。"
                 />
                 <div className="text-right">
-                  <span className="font-black block">
-                    {TRANSLATIONS[analysis?.riskLevel ?? ""] ||
+                  <span className="font-black block text-lg">
+                    {/* ▼ 修正: 専用辞書を使用 (これで「高い」と出るはず) */}
+                    {RISK_LEVEL_TRANSLATIONS[analysis?.riskLevel ?? ""] ||
                       analysis?.riskLevel}
                   </span>
                   {analysis?.riskDetails && (
-                    <span className="text-[10px] opacity-80 block">
-                      {analysis.riskDetails}
+                    <span className="text-[11px] opacity-90 block font-bold mt-1">
+                      {translateRiskDetails(analysis.riskDetails)}
                     </span>
                   )}
                 </div>

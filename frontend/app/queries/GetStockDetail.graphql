@@ -7,12 +7,12 @@ query GetStockDetail($code: String!) {
     japaneseMarket
     sector17CodeName
     description
-    
+
     analysisResults {
       date
       stockPrice
       marketCap
-      
+
       # --- AI Diagnosis ---
       status
       aiSummary
@@ -20,14 +20,14 @@ query GetStockDetail($code: String!) {
       riskDetails
       state
       expectationStructure
-      
+
       # --- Scores ---
       zScore
       fScore
       expectationGap
       impliedRevenueGrowth
       actualRevenueGrowth
-      
+
       # --- Tags ---
       tagSafetyShield
       tagQualityGrowth
@@ -51,6 +51,7 @@ query GetStockDetail($code: String!) {
       equityRatio
       dividendYield
       freeCashFlow
+      operatingCf # ★これを追加！
     }
 
     financials {

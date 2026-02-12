@@ -5,11 +5,14 @@ import Link from "next/link";
 import { useSearchParams, usePathname, useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { GetStocksDocument, GetStocksQuery } from "@/lib/gql/graphql";
+import { StockCard } from "@/components/StockCardMarket";
 
 // --- Types ---
 type StockItem = NonNullable<GetStocksQuery["stocks"]>[number];
 
 // --- Constants ---
+const PAGE_SIZE = 50;
+
 const SECTORS = [
   "IT・通信・サービス",
   "自動車・輸送機",
@@ -25,159 +28,16 @@ const SECTORS = [
   "その他",
 ];
 
-// ヘルパー関数
-const fmt = (val?: number | null, unit = "", fixed = 1) =>
-  val !== undefined && val !== null ? `${val.toFixed(fixed)}${unit}` : "-";
-
-const StockCard = ({ stock }: { stock: StockItem }) => {
-  const analysis = stock.analysisResults?.[0];
-  const gap = analysis?.expectationGap ?? 0;
-
-  const statusColor =
-    analysis?.status === "Strong Buy"
-      ? "bg-red-500 text-white shadow-red-200"
-      : analysis?.status === "Buy"
-        ? "bg-orange-500 text-white shadow-orange-200"
-        : analysis?.status === "Avoid"
-          ? "bg-gray-800 text-white"
-          : analysis?.status === "Sell"
-            ? "bg-blue-600 text-white"
-            : "bg-gray-100 text-gray-600 border border-gray-200";
-
-  return (
-    <Link href={`/stocks/${stock.code}`} className="block group h-full">
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 h-full flex flex-col overflow-hidden relative">
-        <div className="p-4 pb-2 flex justify-between items-start">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="font-mono text-xs text-gray-400 font-bold">
-                {stock.code}
-              </span>
-              <span className="text-[10px] px-1.5 py-0.5 bg-gray-50 text-gray-500 rounded border border-gray-100">
-                {stock.sector17CodeName || stock.market}
-              </span>
-            </div>
-            <h3 className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors line-clamp-1 text-lg leading-tight">
-              {stock.japaneseName || stock.name}
-            </h3>
-          </div>
-          <div
-            className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide shadow-sm ${statusColor}`}
-          >
-            {analysis?.status || "-"}
-          </div>
-        </div>
-
-        <div className="px-4 py-2 flex justify-between items-end border-b border-dashed border-gray-100 pb-3">
-          <div>
-            <div className="text-2xl font-mono font-bold text-gray-900 tracking-tight">
-              ¥{analysis?.stockPrice?.toLocaleString() ?? "-"}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] text-gray-400 font-bold mb-0.5">
-              期待乖離(Gap)
-            </div>
-            <div
-              className={`text-sm font-bold font-mono ${gap > 0 ? "text-red-500" : "text-green-600"}`}
-            >
-              {gap > 0 ? "+" : ""}
-              {gap.toFixed(0)}%
-              <span className="text-[10px] ml-1 font-sans font-normal text-gray-400">
-                {gap > 0 ? "(過熱)" : "(割安)"}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="px-4 py-3 grid grid-cols-3 gap-2 bg-slate-50">
-          <div className="text-center">
-            <div className="text-[9px] text-gray-400 uppercase font-bold">
-              PER
-            </div>
-            <div className="text-sm font-mono font-bold text-gray-700">
-              {fmt(analysis?.per, "x")}
-            </div>
-          </div>
-          <div className="text-center border-l border-gray-200">
-            <div className="text-[9px] text-gray-400 uppercase font-bold">
-              PBR
-            </div>
-            <div className="text-sm font-mono font-bold text-gray-700">
-              {fmt(analysis?.pbr, "x", 2)}
-            </div>
-          </div>
-          <div className="text-center border-l border-gray-200">
-            <div className="text-[9px] text-gray-400 uppercase font-bold">
-              配当
-            </div>
-            <div className="text-sm font-mono font-bold text-gray-700">
-              {fmt(analysis?.dividendYield, "%", 2)}
-            </div>
-          </div>
-        </div>
-
-        <div className="p-3 flex flex-wrap gap-1.5 mt-auto pt-2">
-          {analysis?.tagZombie && (
-            <span className="px-1.5 py-0.5 bg-gray-800 text-white text-[10px] rounded font-bold">
-              💀 ゾンビ
-            </span>
-          )}
-          {analysis?.tagSafetyShield && (
-            <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded font-bold">
-              🛡️ 盤石
-            </span>
-          )}
-          {analysis?.tagQualityGrowth && (
-            <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] rounded font-bold">
-              👑 王道
-            </span>
-          )}
-          {analysis?.tagInstitutional && (
-            <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 text-[10px] rounded font-bold">
-              🧠 プロ
-            </span>
-          )}
-          {analysis?.tagCashCow && (
-            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 text-[10px] rounded font-bold">
-              🧱 金なる木
-            </span>
-          )}
-          {analysis?.tagSingleEngine && (
-            <span className="px-1.5 py-0.5 bg-pink-100 text-pink-700 text-[10px] rounded font-bold">
-              🚀 夢株
-            </span>
-          )}
-          {analysis?.tagHighVolatility && (
-            <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] rounded font-bold">
-              🎢 ボラ
-            </span>
-          )}
-          {analysis?.tagSilentImprover && (
-            <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] rounded font-bold">
-              🌱 改善
-            </span>
-          )}
-          {analysis?.tagTurnaround && (
-            <span className="px-1.5 py-0.5 bg-teal-100 text-teal-700 text-[10px] rounded font-bold">
-              🔁 復活
-            </span>
-          )}
-          {analysis?.tagAccountingRisk && (
-            <span className="px-1.5 py-0.5 bg-red-100 text-red-700 text-[10px] rounded font-bold">
-              🧪 会計注
-            </span>
-          )}
-          {analysis?.tagFragile && (
-            <span className="px-1.5 py-0.5 bg-red-50 text-red-600 border border-red-200 text-[10px] rounded font-bold">
-              🚨 脆弱
-            </span>
-          )}
-        </div>
-      </div>
-    </Link>
-  );
-};
+const STATUS_OPTIONS = [
+  { value: "Strong Buy", label: "🔥 買い推奨 (Strong Buy)" },
+  { value: "Buy", label: "✅ 買い (Buy)" },
+  { value: "Buy (Spec)", label: "🚀 投機買い (Spec Buy)" },
+  { value: "Neutral", label: "➖ 中立 (Neutral)" },
+  { value: "Hold", label: "✋ 保持 (Hold)" },
+  { value: "Watch", label: "👀 監視 (Watch)" },
+  { value: "Sell", label: "👋 売り (Sell)" },
+  { value: "Avoid", label: "⚠️ 見送り (Avoid)" },
+];
 
 export default function MarketPage() {
   const searchParams = useSearchParams();
@@ -188,10 +48,36 @@ export default function MarketPage() {
   // URL Params
   const currentSearch = searchParams.get("search") || "";
   const currentSector = searchParams.get("sector") || "";
-
-  // ▼ 修正: カンマ区切り文字列を配列に変換して管理
+  const currentStatus = searchParams.get("status") || ""; // ★追加
   const modeParam = searchParams.get("mode");
   const currentModes = modeParam ? modeParam.split(",") : [];
+
+  // URLパラメータからの現在値
+  const paramSearch = searchParams.get("search") || "";
+  // ▼ 修正1: 入力用のローカルStateを作成（初期値はURLパラメータ）
+  const [inputValue, setInputValue] = useState(paramSearch);
+
+  // URLが変わった時（戻るボタンなど）にローカルStateも同期
+  // ※これを入れないと、ブラウザバックした時に入力欄が戻らない
+  useState(() => {
+    setInputValue(paramSearch);
+  });
+
+  // ▼ 修正2: 検索実行関数（引数を受け取るように変更）
+  const doSearch = (term: string) => {
+    router.replace(`${pathname}?${createQueryString("search", term || null)}`);
+  };
+
+  // ▼ 修正3: Enterキーを押した時の処理
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      doSearch(inputValue);
+    }
+  };
+
+  // Pagination Param (1-based index)
+  const pageParam = searchParams.get("page");
+  const currentPage = pageParam ? parseInt(pageParam, 10) : 1;
 
   const createQueryString = useCallback(
     (name: string, value: string | null) => {
@@ -200,6 +86,10 @@ export default function MarketPage() {
         params.set(name, value);
       } else {
         params.delete(name);
+      }
+      // 検索条件が変わったらページは1に戻す (ページ変更時以外)
+      if (name !== "page") {
+        params.set("page", "1");
       }
       return params.toString();
     },
@@ -214,24 +104,31 @@ export default function MarketPage() {
     router.push(`${pathname}?${createQueryString("sector", sector)}`);
   };
 
-  // ▼ 追加: モードのトグルロジック (追加/削除)
+  // ★追加: ステータス変更ハンドラ
+  const handleStatusChange = (status: string) => {
+    router.push(`${pathname}?${createQueryString("status", status)}`);
+  };
+
+  // ★追加: ページ変更ハンドラ
+  const handlePageChange = (newPage: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("page", newPage.toString());
+    router.push(`${pathname}?${params.toString()}`);
+    // ページトップへスクロール
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const toggleMode = (modeId: string | null) => {
     if (modeId === null) {
-      // すべて表示 (クリア)
       router.push(`${pathname}?${createQueryString("mode", null)}`);
       return;
     }
-
     let newModes = [...currentModes];
     if (newModes.includes(modeId)) {
-      // 既に選択済みなら削除
       newModes = newModes.filter((m) => m !== modeId);
     } else {
-      // 未選択なら追加
       newModes.push(modeId);
     }
-
-    // 空になったらパラメータ削除、あればカンマ区切りでセット
     const newValue = newModes.length > 0 ? newModes.join(",") : null;
     router.push(`${pathname}?${createQueryString("mode", newValue)}`);
   };
@@ -239,11 +136,16 @@ export default function MarketPage() {
   const { data, loading, error } = useQuery<GetStocksQuery>(GetStocksDocument, {
     variables: {
       search: currentSearch,
-      rankingModes: currentModes, // 配列を渡す
+      rankingModes: currentModes,
       sector: currentSector,
-      limit: 50,
+      status: currentStatus, // ★追加
+      limit: PAGE_SIZE,
+      offset: (currentPage - 1) * PAGE_SIZE, // ★追加: ページ計算
     },
+    fetchPolicy: "cache-and-network", // ページネーション時はキャッシュ優先しつつ更新
   });
+
+  const hasNextPage = (data?.stocks?.length || 0) === PAGE_SIZE;
 
   const CATEGORIES = [
     {
@@ -359,20 +261,24 @@ export default function MarketPage() {
           </h1>
 
           <div className="flex flex-col md:flex-row gap-4 mb-6">
+            {/* 1. 検索バー */}
             <div className="relative flex-1">
               <input
                 type="text"
-                placeholder="銘柄コードまたは企業名..."
+                placeholder="銘柄コードまたは企業名... (Enterで検索)"
                 className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-gray-200 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base"
-                value={currentSearch}
-                onChange={(e) => handleSearch(e.target.value)}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onBlur={() => doSearch(inputValue)} // フォーカスが外れた時も検索すると親切
               />
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
                 🔍
               </span>
             </div>
 
-            <div className="relative min-w-[200px]">
+            {/* 2. 業種ドロップダウン */}
+            <div className="relative min-w-[180px]">
               <select
                 value={currentSector}
                 onChange={(e) => handleSectorChange(e.target.value)}
@@ -382,6 +288,25 @@ export default function MarketPage() {
                 {SECTORS.map((s) => (
                   <option key={s} value={s}>
                     {s}
+                  </option>
+                ))}
+              </select>
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+                ▼
+              </span>
+            </div>
+
+            {/* 3. ★Statusドロップダウン */}
+            <div className="relative min-w-[180px]">
+              <select
+                value={currentStatus}
+                onChange={(e) => handleStatusChange(e.target.value)}
+                className="w-full pl-4 pr-10 py-3.5 rounded-xl border border-gray-200 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-base bg-white appearance-none font-bold text-gray-700 cursor-pointer"
+              >
+                <option value="All">📊 全ステータス</option>
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
                   </option>
                 ))}
               </select>
@@ -404,7 +329,6 @@ export default function MarketPage() {
               {isFilterExpanded ? "フィルタを隠す" : "詳細フィルタを表示"}
             </button>
 
-            {/* 選択中タグのバッジ一覧 */}
             {!isFilterExpanded && currentModes.length > 0 && (
               <div className="flex gap-2">
                 {currentModes.map((mode) => (
@@ -451,9 +375,7 @@ export default function MarketPage() {
                     </span>
                     {CATEGORIES.filter((c) => c.group === groupName).map(
                       (cat) => {
-                        // 選択済みかどうかチェック
                         const isSelected = currentModes.includes(cat.id);
-
                         return (
                           <button
                             key={cat.id}
@@ -476,7 +398,6 @@ export default function MarketPage() {
                 ))}
               </div>
 
-              {/* 複数選択時の説明表示 */}
               {currentModes.length > 0 && (
                 <div className="mt-6 bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-start gap-3">
                   <span className="text-xl">💡</span>
@@ -498,6 +419,7 @@ export default function MarketPage() {
           )}
         </div>
 
+        {/* --- List & Loading --- */}
         {loading ? (
           <div className="py-20 text-center text-gray-400">
             Scanning Market Data...
@@ -507,11 +429,57 @@ export default function MarketPage() {
             Error: {error.message}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {data?.stocks?.map((stock) => (
-              <StockCard key={stock.code} stock={stock} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {data?.stocks?.map((stock) => (
+                <StockCard key={stock.code} stock={stock} />
+              ))}
+            </div>
+
+            {/* 該当なし */}
+            {data?.stocks?.length === 0 && (
+              <div className="py-20 text-center">
+                <p className="text-xl font-bold text-gray-400">
+                  No stocks found matching your criteria.
+                </p>
+                <button
+                  onClick={() => toggleMode(null)}
+                  className="text-blue-500 hover:underline mt-2"
+                >
+                  Reset Filters
+                </button>
+              </div>
+            )}
+
+            {/* ★ Pagination Controls */}
+            <div className="flex justify-center items-center gap-4 mt-12 mb-8">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1}
+                className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${
+                  currentPage <= 1
+                    ? "bg-gray-100 text-gray-300 cursor-not-allowed"
+                    : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 shadow-sm"
+                }`}
+              >
+                ← Prev
+              </button>
+              <span className="font-mono text-sm font-bold text-gray-500">
+                Page {currentPage}
+              </span>
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={!hasNextPage}
+                className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${
+                  !hasNextPage
+                    ? "bg-gray-100 text-gray-300 cursor-not-allowed"
+                    : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 shadow-sm"
+                }`}
+              >
+                Next →
+              </button>
+            </div>
+          </>
         )}
       </main>
     </div>
