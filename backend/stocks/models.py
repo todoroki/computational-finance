@@ -290,6 +290,36 @@ class AnalysisResult(BaseModel):
     equity_ratio = models.FloatField("自己資本比率(%)", null=True)
     dividend_yield = models.FloatField("配当利回り(%)", null=True)
 
+    # --- 規模 ---
+    market_cap_rank = models.IntegerField(null=True, blank=True)
+    market_cap_percentile = models.FloatField(
+        null=True, blank=True, help_text="上位何%か(例: 5.2)"
+    )
+    market_cap_total = models.IntegerField(null=True, blank=True)
+
+    # --- 資本効率 ---
+    roe_rank = models.IntegerField(null=True, blank=True)
+    roe_percentile = models.FloatField(null=True, blank=True, help_text="上位何%か")
+
+    # --- 割安性 (セクター内比較) ---
+    per_sector_avg = models.FloatField(null=True, blank=True)
+    per_sector_rank = models.IntegerField(null=True, blank=True)
+    per_sector_percentile = models.FloatField(
+        null=True, blank=True, help_text="セクター内で割安な方から上位何%か"
+    )
+    per_sector_total = models.IntegerField(null=True, blank=True)
+
+    # --- 神経反射テスト (市場連動性とアルファ) ---
+    alpha_benchmark = models.CharField(
+        max_length=20, default="TOPIX", help_text="比較対象(例: TOPIX, 業種別指数)"
+    )
+    alpha_1month = models.FloatField(
+        null=True, blank=True, help_text="直近1ヶ月の超過リターン(%)"
+    )
+    alpha_3month = models.FloatField(
+        null=True, blank=True, help_text="直近3ヶ月の超過リターン(%)"
+    )
+
     class Meta:
         ordering = ["-created_at"]  # BaseModelのcreated_atを使用
         get_latest_by = "created_at"
@@ -404,3 +434,36 @@ class PortfolioItem(BaseModel):
 
     def __str__(self):
         return f"{self.portfolio.name} - {self.stock.name} ({self.quantity}株)"
+
+
+# ▼▼▼ 1. 新規追加: 毎日の株価テーブル ▼▼▼
+# ▼▼▼ 1. 毎日の株価テーブル（完璧版） ▼▼▼
+class DailyStockPrice(BaseModel):
+    # 文字列のcodeではなく、Stockモデルへのリレーションを張る
+    stock = models.ForeignKey(
+        Stock,  # アプリ内のStockモデル
+        on_delete=models.CASCADE,
+        related_name="daily_prices",  # stock.daily_prices.all() で呼べるようになる
+        db_index=True,
+    )
+
+    date = models.DateField(db_index=True)
+
+    open_price = models.FloatField(null=True, blank=True)
+    high_price = models.FloatField(null=True, blank=True)
+    low_price = models.FloatField(null=True, blank=True)
+    close_price = models.FloatField(null=True, blank=True)
+
+    # 株式分割・配当調整後の終値（リターン計算の命綱）
+    adjusted_close = models.FloatField(null=True, blank=True)
+
+    volume = models.BigIntegerField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("stock", "date")
+        indexes = [
+            models.Index(fields=["stock", "-date"]),
+        ]
+
+    def __str__(self):
+        return f"{self.stock.code} - {self.date}: Adj {self.adjusted_close}"
