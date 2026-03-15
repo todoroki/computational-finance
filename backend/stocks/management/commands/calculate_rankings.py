@@ -89,17 +89,23 @@ class Command(BaseCommand):
         self.stdout.write("  -> 株価履歴から超過リターン(Alpha)を計算中...")
 
         # 直近の株価データを取得
-        qs_prices = DailyStockPrice.objects.select_related("stock").values(
+        qs_prices = DailyStockPrice.objects.values(
             "stock__code", "date", "adjusted_close"
         )
         df_prices = pd.DataFrame(list(qs_prices))
-        df_prices["date"] = pd.to_datetime(df_prices["date"])
 
-        # ベンチマーク(TOPIX連動ETF: 1306)のデータを抽出
+        if not df_prices.empty:
+            df_prices["date"] = pd.to_datetime(df_prices["date"])
+            df_prices = df_prices.sort_values("date")
+
+            # 🚀 【爆速化の魔法】全データを銘柄コードごとに分割して「辞書」にしておく
+            # これで44万件から毎回検索する必要がなくなり、一瞬で取り出せます
+            grouped_prices = dict(tuple(df_prices.groupby("stock__code")))
+        else:
+            grouped_prices = {}
+
         BENCHMARK_CODE = "1306"
-        df_bm = df_prices[df_prices["stock__code"] == BENCHMARK_CODE].sort_values(
-            "date"
-        )
+        df_bm = grouped_prices.get(BENCHMARK_CODE, pd.DataFrame())
 
         # 計算結果を格納する列を初期化
         df["alpha_1month"] = None
@@ -107,20 +113,17 @@ class Command(BaseCommand):
         df["alpha_benchmark"] = "TOPIX(1306)"
 
         if not df_bm.empty:
-            # 最新日、1ヶ月前(約21営業日)、3ヶ月前(約63営業日)のベンチマークリターンを計算
             latest_date = df_bm["date"].max()
             date_1m_ago = latest_date - timedelta(days=30)
             date_3m_ago = latest_date - timedelta(days=90)
 
             # 近似の日付の株価を取得するヘルパー関数
             def get_price_asof(df_target, target_date):
-                # target_date以前の最新の株価を取得
                 past_prices = df_target[df_target["date"] <= target_date]
                 if not past_prices.empty:
                     return past_prices.iloc[-1]["adjusted_close"]
                 return None
 
-            # ベンチマークのリターン
             bm_latest_price = get_price_asof(df_bm, latest_date)
             bm_price_1m = get_price_asof(df_bm, date_1m_ago)
             bm_price_3m = get_price_asof(df_bm, date_3m_ago)
@@ -135,9 +138,9 @@ class Command(BaseCommand):
             # 各銘柄のアルファを計算
             for idx, row in df.iterrows():
                 code = row["code"]
-                df_stock = df_prices[df_prices["stock__code"] == code].sort_values(
-                    "date"
-                )
+
+                # 🚀 辞書から一瞬で取り出す（空なら空のDataFrame）
+                df_stock = grouped_prices.get(code, pd.DataFrame())
 
                 if df_stock.empty:
                     continue

@@ -548,9 +548,17 @@ export default function StockDetailPage({
               </div>
               <div className="text-xl font-mono font-bold text-gray-800">
                 {fmt(analysis?.per, "倍")}
+                {/* ▼ バッジ追加 ▼ */}
+                {analysis?.perSectorPercentile && (
+                  <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded ml-2 align-middle border border-emerald-100 shadow-sm">
+                    業種内 上位 {analysis.perSectorPercentile.toFixed(1)}%
+                  </span>
+                )}
               </div>
               <div className="text-[10px] text-gray-400">
-                目安: 15倍以下で割安
+                {analysis?.perSectorAvg
+                  ? `業種平均: ${analysis.perSectorAvg.toFixed(1)}倍`
+                  : "目安: 15倍以下で割安"}
               </div>
             </div>
             <div>
@@ -574,6 +582,12 @@ export default function StockDetailPage({
                 className={`text-xl font-mono font-bold ${(analysis?.roe ?? 0) > 10 ? "text-blue-600" : "text-gray-800"}`}
               >
                 {fmt(analysis?.roe, "%")}
+                {/* ▼ バッジ追加 ▼ */}
+                {analysis?.roePercentile && (
+                  <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded ml-2 align-middle border border-blue-100 shadow-sm">
+                    上位 {analysis.roePercentile.toFixed(1)}%
+                  </span>
+                )}
               </div>
               <div className="text-[10px] text-gray-400">
                 目安: 8%以上で優良

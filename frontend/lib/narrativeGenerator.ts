@@ -198,6 +198,48 @@ const CONFLICT_PATTERNS: {
             どれほど良い会社でも、「高すぎる価格」で買えば悪い投資になります。`,
                 advice: "Watchリストに入れてください。暴落時こそが、この銘柄の輝く時です。",
             })
+        },
+        // ▼ 1. 冷凍保存された優等生 (アップデート版)
+        {
+            id: "frozen_excellence",
+            type: "opportunity",
+            severity: 3,
+            // 財務(Fスコア)が7以上で極めて健康なのに、直近1ヶ月で市場(TOPIX等)に3%以上負けている
+            condition: (a) => safe(a.fScore) >= 7 && safe(a.alpha1month) < -3.0,
+            generate: (a) => ({
+                icon: "🧊",
+                title: "冷凍保存された優等生",
+                body: `財務の健康度（Fスコア: ${safe(a.fScore)}/9）は極めて優秀ですが、直近1ヶ月で市場（${a.alphaBenchmark}）に対し ${Math.abs(safe(a.alpha1month)).toFixed(1)}% も出遅れています。\n中身の良さに市場がまだ気づいていない、放置された「お宝」の可能性があります。`,
+                advice: "下値は堅いです。市場が気づくのを待つ「置き配」投資に向いています。",
+            })
+        },
+        // ▼ 2. 浮かれた病人
+        {
+            id: "bubble_patient",
+            type: "warning",
+            severity: 4,
+            // 倒産リスク(Zスコア)が危険水域(<1.8)なのに、市場を5%以上アウトパフォームしている
+            condition: (a) => safe(a.zScore) < 1.8 && safe(a.alpha1month) > 5.0,
+            generate: (a) => ({
+                icon: "🎈",
+                title: "浮かれた病人",
+                body: `倒産耐性（Zスコア: ${safe(a.zScore).toFixed(2)}）に不安を抱える虚弱体質ですが、直近1ヶ月で市場を ${safe(a.alpha1month).toFixed(1)}% もアウトパフォームし過剰に買われています。\n実態を伴わない期待だけで膨らんだバブル状態です。`,
+                advice: "いつ神経系（株価）が正常化し暴落してもおかしくありません。警戒が必要です。",
+            })
+        },
+        // ▼ 3. 神経系の麻痺
+        {
+            id: "paralyzed_nerve",
+            type: "info",
+            severity: 2,
+            // 稼ぐ力(ROE)が上位20%以内なのに、市場に負け続けている
+            condition: (a) => safe(a.roePercentile) > 0 && safe(a.roePercentile) <= 20 && safe(a.alpha3month) < -5.0,
+            generate: (a) => ({
+                icon: "📉",
+                title: "神経系の麻痺",
+                body: `資本効率（ROE）は市場の上位 ${safe(a.roePercentile).toFixed(1)}% に入るトップクラスの稼ぐ力を持っていますが、直近3ヶ月の株価は市場の動きに対して無反応、あるいは逆行しています。\nセクター全体への不信感か、需給の悪化が原因と考えられます。`,
+                advice: "業績悪化の先行指標か、単なる需給の歪みか。次回の決算を注視してください。",
+            })
         }
     ];
 

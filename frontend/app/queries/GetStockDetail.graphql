@@ -52,6 +52,22 @@ query GetStockDetail($code: String!) {
       dividendYield
       freeCashFlow
       operatingCf # ★これを追加！
+      # ▼▼▼ 今回追加したランキング＆アルファ指標 ▼▼▼
+      marketCapRank
+      marketCapPercentile
+      marketCapTotal
+
+      roeRank
+      roePercentile
+
+      perSectorAvg
+      perSectorRank
+      perSectorPercentile
+      perSectorTotal
+
+      alphaBenchmark
+      alpha1month
+      alpha3month
     }
 
     financials {

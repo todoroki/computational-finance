@@ -75,6 +75,24 @@ class AnalysisResultType:
     tag_high_volatility: bool  # 追加
     tag_fragile: bool  # 追加
 
+    # ▼▼▼ 今回追加したランキング・相対評価・アルファ指標 ▼▼▼
+    market_cap_rank: int | None
+    market_cap_percentile: float | None
+    market_cap_total: int | None
+
+    roe_rank: int | None
+    roe_percentile: float | None
+
+    per_sector_avg: float | None
+    per_sector_rank: int | None
+    per_sector_percentile: float | None
+    per_sector_total: int | None
+
+    alpha_benchmark: str | None
+    alpha_1month: float | None
+    alpha_3month: float | None
+    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲  
+
 
 # === 2. 財務データの型定義 ===
 @strawberry.django.type(FinancialStatement)
