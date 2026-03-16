@@ -91,7 +91,9 @@ class AnalysisResultType:
     alpha_benchmark: str | None
     alpha_1month: float | None
     alpha_3month: float | None
-    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲  
+    # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+    # ▼▼▼ 追加 ▼▼▼
+    health_score: float | None
 
 
 # === 2. 財務データの型定義 ===

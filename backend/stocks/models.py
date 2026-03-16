@@ -320,6 +320,10 @@ class AnalysisResult(BaseModel):
         null=True, blank=True, help_text="直近3ヶ月の超過リターン(%)"
     )
 
+    health_score = models.FloatField(
+        "総合ヘルススコア", null=True, blank=True, help_text="0〜100の総合評価点"
+    )
+
     class Meta:
         ordering = ["-created_at"]  # BaseModelのcreated_atを使用
         get_latest_by = "created_at"

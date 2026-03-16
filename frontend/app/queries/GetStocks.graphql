@@ -57,6 +57,9 @@ query GetStocks(
       freeCashFlow
       operatingCf
       netIncome
+
+      # ▼▼▼ これを追加！ ▼▼▼
+      healthScore
     }
   }
 }

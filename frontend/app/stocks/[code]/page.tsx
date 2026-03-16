@@ -370,6 +370,27 @@ export default function StockDetailPage({
             </div>
 
             <div className="flex flex-col items-center min-w-[140px]">
+              {/* ▼▼▼ 追加: Stock Health Score ▼▼▼ */}
+              <div
+                className={`w-full flex flex-col items-center justify-center rounded-2xl p-4 shadow-lg mb-4 border-2 ${
+                  (analysis?.healthScore ?? 0) >= 80
+                    ? "bg-indigo-900 text-white border-indigo-500 shadow-indigo-200"
+                    : (analysis?.healthScore ?? 0) >= 50
+                      ? "bg-white text-gray-800 border-gray-200"
+                      : "bg-red-50 text-red-900 border-red-200"
+                }`}
+              >
+                <div className="text-[10px] font-bold uppercase tracking-widest opacity-70 mb-1">
+                  Health Score
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-5xl font-black tracking-tighter">
+                    {analysis?.healthScore?.toFixed(0) ?? "---"}
+                  </span>
+                  <span className="text-lg font-medium opacity-50">/100</span>
+                </div>
+              </div>
+              {/* ▲▲▲ 追加ここまで ▲▲▲ */}
               <div
                 className={`
                         w-32 h-32 rounded-full flex flex-col items-center justify-center border-4 shadow-lg mb-4

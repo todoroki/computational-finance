@@ -31,7 +31,7 @@ class Command(BaseCommand):
                     "stock__sector_17_code_name"
                 ),  # ※Stockモデルに業種名がある前提。なければ適宜変更してください
             )
-            .values("id", "code", "sector", "market_cap", "roe", "per")
+            .values("id", "code", "sector", "market_cap", "roe", "per", "f_score")
         )
         df = pd.DataFrame(list(qs_analysis))
 
@@ -164,7 +164,49 @@ class Command(BaseCommand):
             )
 
         # ==========================================
-        # 5. DBへ一括保存 (Bulk Update)
+        # 5. 総合ヘルススコア (Composite Score) の算出
+        # ==========================================
+        self.stdout.write("  -> 総合ヘルススコア(0-100)を計算中...")
+        
+        df['health_score'] = None
+        
+        for idx, row in df.iterrows():
+            total_score = 0.0
+            total_weight = 0.0
+            
+            # 1. Quality (ROEパーセンタイル: 上位ほど高得点) / 配点30
+            if pd.notnull(row.get('roe_percentile')):
+                total_score += (100 - row['roe_percentile']) * 0.30
+                total_weight += 30
+                
+            # 2. Valuation (PERセクター内パーセンタイル) / 配点30
+            if pd.notnull(row.get('per_sector_percentile')):
+                total_score += (100 - row['per_sector_percentile']) * 0.30
+                total_weight += 30
+            else:
+                # 赤字などでPERがない場合は「0点」として厳しいペナルティを与える
+                total_weight += 30
+                
+            # 3. Safety (F-Score: 9点満点) / 配点20
+            f_score = row.get('f_score')
+            if pd.notnull(f_score):
+                total_score += (f_score / 9.0) * 100 * 0.20
+                total_weight += 20
+                
+            # 4. Momentum (Alpha 1month: -5%〜+5%を0〜100に変換) / 配点20
+            alpha = row.get('alpha_1month')
+            if pd.notnull(alpha):
+                alpha_norm = max(0, min(100, (alpha + 5) * 10))
+                total_score += alpha_norm * 0.20
+                total_weight += 20
+            
+            # 何かしらの指標があれば、100点満点に補正してスコアを算出
+            if total_weight > 0:
+                final_score = (total_score / total_weight) * 100
+                df.at[idx, 'health_score'] = round(final_score, 1)
+
+        # ==========================================
+        # 6. DBへ一括保存 (Bulk Update)
         # ==========================================
         self.stdout.write("  -> 計算結果をデータベースに保存しています...")
 
@@ -193,6 +235,8 @@ class Command(BaseCommand):
             result.alpha_1month = clean_nan(row["alpha_1month"])
             result.alpha_3month = clean_nan(row["alpha_3month"])
 
+            result.health_score = clean_nan(row["health_score"])
+
             results_to_update.append(result)
 
         # 指定したフィールドだけを一括更新 (超高速)
@@ -212,6 +256,7 @@ class Command(BaseCommand):
                     "alpha_benchmark",
                     "alpha_1month",
                     "alpha_3month",
+                    "health_score",
                 ],
                 batch_size=1000,
             )

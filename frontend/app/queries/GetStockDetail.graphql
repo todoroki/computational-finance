@@ -68,6 +68,9 @@ query GetStockDetail($code: String!) {
       alphaBenchmark
       alpha1month
       alpha3month
+
+      # ▼▼▼ これを追加！ ▼▼▼
+      healthScore
     }
 
     financials {
