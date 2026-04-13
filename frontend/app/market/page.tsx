@@ -6,7 +6,7 @@ import { useSearchParams, usePathname, useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { GetStocksDocument, GetStocksQuery } from "@/lib/gql/graphql";
 import { StockCard } from "@/components/StockCardMarket";
-
+import MarketScatterPlot from "@/components/MarketScatterPlot";
 // --- Types ---
 type StockItem = NonNullable<GetStocksQuery["stocks"]>[number];
 
@@ -44,6 +44,7 @@ export default function MarketPage() {
   const pathname = usePathname();
   const router = useRouter();
   const [isFilterExpanded, setIsFilterExpanded] = useState(true);
+  const [viewMode, setViewMode] = useState<"list" | "map">("map"); // 初期表示をマップ(散布図)に！
 
   // URL Params
   const currentSearch = searchParams.get("search") || "";
@@ -420,6 +421,7 @@ export default function MarketPage() {
         </div>
 
         {/* --- List & Loading --- */}
+
         {loading ? (
           <div className="py-20 text-center text-gray-400">
             Scanning Market Data...
@@ -430,11 +432,44 @@ export default function MarketPage() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {data?.stocks?.map((stock) => (
-                <StockCard key={stock.code} stock={stock} />
-              ))}
+            {/* ▼▼▼ 追加: View 切り替えタブ ▼▼▼ */}
+            <div className="flex justify-end mb-4">
+              <div className="bg-gray-100 p-1 rounded-lg inline-flex">
+                <button
+                  onClick={() => setViewMode("map")}
+                  className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${
+                    viewMode === "map"
+                      ? "bg-white text-blue-600 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  📍 Market Map
+                </button>
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${
+                    viewMode === "list"
+                      ? "bg-white text-blue-600 shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  📋 List View
+                </button>
+              </div>
             </div>
+
+            {/* ▼▼▼ 追加: マップ or リストの表示分岐 ▼▼▼ */}
+            {viewMode === "map" ? (
+              <div className="mb-8 animate-in fade-in duration-500">
+                <MarketScatterPlot stocks={data?.stocks || []} />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in duration-500">
+                {data?.stocks?.map((stock) => (
+                  <StockCard key={stock.code} stock={stock} />
+                ))}
+              </div>
+            )}
 
             {/* 該当なし */}
             {data?.stocks?.length === 0 && (

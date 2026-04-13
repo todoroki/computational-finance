@@ -60,6 +60,8 @@ query GetStocks(
 
       # ▼▼▼ これを追加！ ▼▼▼
       healthScore
+      roePercentile # Y軸（Quality）用
+      perSectorPercentile # X軸（Valuation）用
     }
   }
 }
