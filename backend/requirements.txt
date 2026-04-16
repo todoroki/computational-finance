@@ -94,6 +94,8 @@ pydantic==2.13.0
     # via google-genai
 pydantic-core==2.46.0
     # via pydantic
+pyjwt==2.12.1
+    # via computational-finance (pyproject.toml)
 python-dateutil==2.9.0.post0
     # via
     #   pandas
