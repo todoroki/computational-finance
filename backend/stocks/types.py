@@ -139,6 +139,12 @@ class StockType:
     # models.py に sector_17_code_name フィールドがある前提
     sector_17_code_name: str | None
 
+    # ▼▼▼ 追加：AIプロファイル用フィールド ▼▼▼
+    ai_business_summary: str | None
+    ai_strengths: List[str] | None  # JSONFieldはListとして定義可能
+    ai_weaknesses: List[str] | None
+    ai_profile_updated_at: strawberry.auto  # 日時はautoでOK
+
     # リレーション: 分析結果 (最新順)
     @strawberry.field
     def analysis_results(self) -> List[AnalysisResultType]:

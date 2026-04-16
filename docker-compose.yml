@@ -48,7 +48,7 @@ services:
       - ./frontend:/app
       # - /app/node_modules  # コンテナ内の node_modules を守るために必須
     ports:
-      - "3000:3000"
+      - "3003:3000"
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000/graphql
       - SCHEMA_URL=http://backend:8000/graphql

@@ -32,6 +32,7 @@ ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://localhost:3003",
     "http://127.0.0.1:3000",
 ]
 
@@ -51,6 +52,8 @@ INSTALLED_APPS = [
     "stocks",
     "users",
 ]
+
+AUTH_USER_MODEL = "users.User"  # これが最重要
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",  # <--- これを一番上に追加

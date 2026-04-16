@@ -320,59 +320,118 @@ export default function StockDetailPage({
 
       <main className="max-w-5xl mx-auto px-4 mt-8 space-y-8">
         {/* 1. Hero Section & Character Tags */}
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 relative overflow-hidden">
+        {/* ▼▼▼ 1. Top Hero & AI Profile セクション ▼▼▼ */}
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 relative overflow-hidden mb-6">
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-50 to-transparent rounded-bl-full -z-0 opacity-50"></div>
 
-          <div className="relative z-10 flex flex-col md:flex-row justify-between items-start gap-6">
-            <div className="flex-1 w-full">
-              {/* Tags List */}
-              <div className="flex flex-wrap gap-2 mb-4">
-                {activeTags.length > 0 ? (
-                  activeTags.map((key) => (
-                    <button
-                      key={key}
-                      onClick={() =>
-                        setSelectedTag(selectedTag === key ? null : key)
-                      }
-                      className={`px-3 py-1 rounded-full text-xs font-bold border transition-all hover:scale-105 ${TAG_DEFINITIONS[key]?.color} ${selectedTag === key ? "ring-2 ring-offset-1 ring-blue-300" : ""}`}
-                    >
-                      {TAG_DEFINITIONS[key]?.label}
-                    </button>
-                  ))
-                ) : (
-                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500 border border-gray-200">
-                    特徴なし (Neutral)
-                  </span>
-                )}
-              </div>
-
-              <TagDescriptionBox tagKey={selectedTag} />
-
-              <div className="flex items-baseline gap-4 mb-2 mt-4">
-                <div className="text-4xl font-mono font-bold text-gray-900">
-                  ¥{analysis?.stockPrice?.toLocaleString() ?? "---"}
+          <div className="relative z-10 flex flex-col xl:flex-row justify-between items-start gap-8">
+            {/* --- 左側コンテンツ: 株価・タグ・AI分析 --- */}
+            <div className="flex-1 w-full space-y-6">
+              {/* タグ & 株価情報 */}
+              <div>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {activeTags.length > 0 ? (
+                    activeTags.map((key) => (
+                      <button
+                        key={key}
+                        onClick={() =>
+                          setSelectedTag(selectedTag === key ? null : key)
+                        }
+                        className={`px-3 py-1 rounded-full text-xs font-bold border transition-all hover:scale-105 ${TAG_DEFINITIONS[key]?.color} ${selectedTag === key ? "ring-2 ring-offset-1 ring-blue-300" : ""}`}
+                      >
+                        {TAG_DEFINITIONS[key]?.label}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-500 border border-gray-200">
+                      特徴なし (Neutral)
+                    </span>
+                  )}
                 </div>
-                <div className="text-sm text-gray-500 font-bold">
-                  時価総額: {formatCurrency(analysis?.marketCap)}
-                </div>
-              </div>
+                <TagDescriptionBox tagKey={selectedTag} />
 
-              <div className="bg-slate-50 border-l-4 border-blue-500 p-4 rounded-r-lg mt-4">
-                <div className="flex justify-between items-center mb-1">
-                  <div className="text-xs font-bold text-blue-500 uppercase">
-                    AI Analyst Summary
+                <div className="flex items-baseline gap-4 mt-4">
+                  <div className="text-4xl font-mono font-bold text-gray-900">
+                    ¥{analysis?.stockPrice?.toLocaleString() ?? "---"}
+                  </div>
+                  <div className="text-sm text-gray-500 font-bold">
+                    時価総額: {formatCurrency(analysis?.marketCap)}
                   </div>
                 </div>
-                <p className="text-sm text-slate-700 font-medium leading-relaxed">
+              </div>
+
+              {/* AI Analyst Summary & Business Profile (上に統合してスッキリ配置) */}
+              <div className="bg-slate-50 rounded-2xl p-5 border border-slate-100 shadow-sm">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-xs font-bold text-blue-600 uppercase tracking-wider flex items-center gap-2">
+                    🤖 AI Analyst Profile
+                    <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[9px]">
+                      Gemini Grounding
+                    </span>
+                  </h3>
+                  {stock.aiProfileUpdatedAt && (
+                    <span className="text-[10px] text-gray-400 font-medium">
+                      更新:{" "}
+                      {new Date(stock.aiProfileUpdatedAt).toLocaleDateString()}
+                    </span>
+                  )}
+                </div>
+
+                {/* 1行サマリー (定量) */}
+                <p className="text-sm text-slate-800 font-bold leading-relaxed mb-4 pb-4 border-b border-slate-200">
                   {analysis?.aiSummary || "データ不足により分析できません。"}
                 </p>
+
+                {/* 事業概要 (定性) */}
+                <div className="space-y-4">
+                  <p className="text-xs text-gray-700 leading-relaxed font-medium bg-white p-3 rounded-lg border border-slate-100">
+                    {stock.aiBusinessSummary || "情報を取得中です..."}
+                  </p>
+
+                  {/* 強み・弱みの2カラム */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">
+                    <div>
+                      <div className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1 mb-2 border-b border-emerald-100 pb-1">
+                        ✅ 競争優位性・強み
+                      </div>
+                      <ul className="space-y-1.5">
+                        {stock.aiStrengths?.map((s: string, i: number) => (
+                          <li
+                            key={i}
+                            className="text-xs text-gray-600 flex items-start gap-1.5"
+                          >
+                            <span className="text-emerald-500 mt-0.5">✦</span>{" "}
+                            <span className="leading-tight">{s}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-bold text-red-500 uppercase flex items-center gap-1 mb-2 border-b border-red-100 pb-1">
+                        ⚠️ 課題・リスク
+                      </div>
+                      <ul className="space-y-1.5">
+                        {stock.aiWeaknesses?.map((w: string, i: number) => (
+                          <li
+                            key={i}
+                            className="text-xs text-gray-600 flex items-start gap-1.5"
+                          >
+                            <span className="text-red-400 mt-0.5">✦</span>{" "}
+                            <span className="leading-tight">{w}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="flex flex-col items-center min-w-[140px]">
-              {/* ▼▼▼ 追加: Stock Health Score ▼▼▼ */}
+            {/* --- 右側コンテンツ: スコア・判定バッジ群 --- */}
+            <div className="flex flex-row xl:flex-col gap-4 items-center justify-center w-full xl:w-auto xl:min-w-[160px]">
+              {/* Health Score */}
               <div
-                className={`w-full flex flex-col items-center justify-center rounded-2xl p-4 shadow-lg mb-4 border-2 ${
+                className={`w-full flex-1 xl:flex-none flex flex-col items-center justify-center rounded-2xl p-5 shadow-lg border-2 ${
                   (analysis?.healthScore ?? 0) >= 80
                     ? "bg-indigo-900 text-white border-indigo-500 shadow-indigo-200"
                     : (analysis?.healthScore ?? 0) >= 50
@@ -390,34 +449,34 @@ export default function StockDetailPage({
                   <span className="text-lg font-medium opacity-50">/100</span>
                 </div>
               </div>
-              {/* ▲▲▲ 追加ここまで ▲▲▲ */}
+
+              {/* AI Verdict */}
               <div
                 className={`
-                        w-32 h-32 rounded-full flex flex-col items-center justify-center border-4 shadow-lg mb-4
-                        ${
-                          analysis?.status === "Strong Buy"
-                            ? "bg-red-500 border-red-600 text-white"
-                            : analysis?.status === "Buy"
-                              ? "bg-orange-500 border-orange-600 text-white"
-                              : analysis?.status === "Avoid"
-                                ? "bg-gray-800 border-gray-900 text-white"
-                                : "bg-white border-gray-200 text-gray-700"
-                        }
-                    `}
+                  w-32 h-32 flex-shrink-0 rounded-full flex flex-col items-center justify-center border-4 shadow-lg
+                  ${
+                    analysis?.status === "Strong Buy"
+                      ? "bg-red-500 border-red-600 text-white"
+                      : analysis?.status === "Buy"
+                        ? "bg-orange-500 border-orange-600 text-white"
+                        : analysis?.status === "Avoid"
+                          ? "bg-gray-800 border-gray-900 text-white"
+                          : "bg-white border-gray-200 text-gray-700"
+                  }
+                `}
               >
                 <span className="text-[10px] font-bold opacity-80 uppercase mb-1">
                   AI Verdict
                 </span>
                 <span className="text-lg font-black text-center leading-tight px-2">
-                  <span className="text-lg font-black text-center leading-tight px-2">
-                    {STATUS_TRANSLATIONS[analysis?.status ?? ""] ||
-                      analysis?.status ||
-                      "-"}
-                  </span>
+                  {STATUS_TRANSLATIONS[analysis?.status ?? ""] ||
+                    analysis?.status ||
+                    "-"}
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 w-full text-center">
+              {/* Z-Score & 期待乖離 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-2 w-full text-center">
                 <div className="bg-gray-50 p-2 rounded border border-gray-200 group relative">
                   <div className="text-[9px] text-gray-400 font-bold border-b border-dotted border-gray-300 inline-block mb-1 cursor-help">
                     財務健全性
@@ -451,8 +510,8 @@ export default function StockDetailPage({
           </div>
         </div>
 
-        {/* ▼▼▼ ここに追加！ StockMRI 診断レポートセクション ▼▼▼ */}
-        <section className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+        {/* ▼▼▼ 2. StockMRI Diagnosis セクション ▼▼▼ */}
+        <section className="animate-in fade-in slide-in-from-bottom-4 duration-500 mb-6">
           <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
             🩺 StockMRI Diagnosis{" "}
             <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px]">
@@ -550,9 +609,8 @@ export default function StockDetailPage({
             ))}
           </div>
         </section>
-        {/* ▲▲▲ 追加終わり ▲▲▲ */}
 
-        {/* ▼▼▼ 追加: Fundamentals Card (基礎指標) ▼▼▼ */}
+        {/* ▼▼▼ 3. Fundamentals Card (基礎指標) ▼▼▼ */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
           <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wider mb-6 flex items-center gap-2">
             📊 Fundamentals{" "}
@@ -569,7 +627,6 @@ export default function StockDetailPage({
               </div>
               <div className="text-xl font-mono font-bold text-gray-800">
                 {fmt(analysis?.per, "倍")}
-                {/* ▼ バッジ追加 ▼ */}
                 {analysis?.perSectorPercentile && (
                   <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded ml-2 align-middle border border-emerald-100 shadow-sm">
                     業種内 上位 {analysis.perSectorPercentile.toFixed(1)}%
@@ -603,7 +660,6 @@ export default function StockDetailPage({
                 className={`text-xl font-mono font-bold ${(analysis?.roe ?? 0) > 10 ? "text-blue-600" : "text-gray-800"}`}
               >
                 {fmt(analysis?.roe, "%")}
-                {/* ▼ バッジ追加 ▼ */}
                 {analysis?.roePercentile && (
                   <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded ml-2 align-middle border border-blue-100 shadow-sm">
                     上位 {analysis.roePercentile.toFixed(1)}%
@@ -667,8 +723,6 @@ export default function StockDetailPage({
             </div>
           </div>
         </div>
-        {/* ▲▲▲ 追加終わり ▲▲▲ */}
-
         {/* 2. Reality Gap & Diagnosis Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">

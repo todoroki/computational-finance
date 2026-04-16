@@ -68,6 +68,13 @@ class Stock(BaseModel):
     )
     # ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
+    ai_business_summary = models.TextField("AI事業概要", blank=True, null=True)
+    ai_strengths = models.JSONField("AI強み分析", blank=True, null=True)
+    ai_weaknesses = models.JSONField("AI課題・弱み分析", blank=True, null=True)
+    ai_profile_updated_at = models.DateTimeField(
+        "AIプロファイル最終更新日", blank=True, null=True
+    )
+
     def __str__(self):
         return f"{self.code} {self.name}"
 

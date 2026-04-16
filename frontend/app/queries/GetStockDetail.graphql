@@ -8,6 +8,11 @@ query GetStockDetail($code: String!) {
     sector17CodeName
     description
 
+    aiBusinessSummary
+    aiStrengths
+    aiWeaknesses
+    aiProfileUpdatedAt
+
     analysisResults {
       date
       stockPrice
