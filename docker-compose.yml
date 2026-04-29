@@ -1,25 +1,33 @@
+x-common-settings: &common-settings
+  build: ./backend
+  volumes:
+    - ./backend:/app
+  environment: &common-env
+    - DEBUG=1
+    - SECRET_KEY=dev_secret_key
+    - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],backend
+    - DB_ENGINE=django.db.backends.postgresql
+    - DB_NAME=django
+    - DB_USER=django
+    - DB_PASSWORD=django
+    - DB_HOST=db
+
 services:
   # --- Backend (Django) ---
   backend:
-    build: ./backend
-    # まだmanage.pyがないので、初回はコメントアウトするか、commandを上書きして起動させないようにするテクニックもありますが、
-    # 今回は run --rm で作るアプローチなので、このままでOK（ただし初回up時はエラーで落ちます）
+    <<: *common-settings
     command: python manage.py runserver 0.0.0.0:8000
-    volumes:
-      - ./backend:/app
     ports:
-      - "8000:8000"
+      - "8008:8000"
     depends_on:
-      - db
-    environment:
-      - DEBUG=1
-      - SECRET_KEY=dev_secret_key
-      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],backend
-      - DB_ENGINE=django.db.backends.postgresql
-      - DB_NAME=django      # 修正: 下のPOSTGRES_DBと同じにする
-      - DB_USER=django      # 修正: 下のPOSTGRES_USERと同じにする
-      - DB_PASSWORD=django  # 修正: 下のPOSTGRES_PASSWORDと同じにする
-      - DB_HOST=db
+      db:
+        condition: service_healthy
+  mailer:
+    <<: *common-settings
+    command: python manage.py BatchEmail
+    depends_on:
+        db:
+          condition: service_healthy     
 
   # --- Database (PostgreSQL) ---
   db:
@@ -50,7 +58,7 @@ services:
     ports:
       - "3003:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/graphql
+      - NEXT_PUBLIC_API_URL=http://localhost:8008/graphql
       - SCHEMA_URL=http://backend:8000/graphql
     depends_on:
       db:

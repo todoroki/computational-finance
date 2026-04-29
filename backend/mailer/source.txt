@@ -1,0 +1,749 @@
+// models.py
+================================================================================
+from binascii import a2b_hex, b2a_hex
+
+from django.contrib.auth import get_user_model
+from django.core.validators import MinValueValidator
+from django.db import models
+
+# Create your models here.
+
+
+class HexEncodedField(models.TextField):
+    """A custom field that stores binary data as a hex-encoded string."""
+
+    def from_db_value(self, value, expression, connection):
+        if value is None:
+            return None
+        return a2b_hex(value)
+
+    def to_python(self, value):
+        if isinstance(value, bytes):
+            return value
+        if value is None:
+            return None
+        return a2b_hex(value)
+
+    def get_prep_value(self, value):
+        if value is None:
+            return None
+        return b2a_hex(value).decode("utf-8")
+
+
+class EmailStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    SENT = "sent", "Sent"
+    FAILED = "failed", "Failed"
+    RETRY = "retry", "Retry"
+    DELIVERED = "delivered", "Delivered"
+    BOUNCED = "bounced", "Bounced"
+
+
+class Purpose(models.TextChoices):
+    TRANSACTIONAL = "transactional", "Transactional"
+    MARKETING = "marketing", "Marketing"
+    NOTIFICATION = "notification", "Notification"
+    # PURPOSE_CHOICES = [
+    #     ("notification", "Notification"),
+    #     ("marketing", "Marketing"),
+    #     ("transactional", "Transactional"),
+    # ]
+
+
+# choices=[
+#     ("to", "To"),
+#     ("cc", "Cc"),
+#     ("bcc", "Bcc"),
+#     ("reply_to", "Reply-To"),
+# ],
+
+
+class AddressType(models.TextChoices):
+    TO = "to", "To"
+    CC = "cc", "Cc"
+    BCC = "bcc", "Bcc"
+    FROM = "from", "From"
+    REPLY_TO = "reply_to", "Reply-To"
+
+
+class BatchEmail(models.Model):
+    user = models.ForeignKey(get_user_model(), related_name="batch_emails", null=True, blank=True, on_delete=models.SET_NULL)
+
+    subject = models.CharField(max_length=256, blank=True)
+    content_html = models.TextField(default="")
+    content_text = models.TextField(blank=True)
+    purpose = models.CharField(max_length=32, choices=Purpose.choices, blank=True)
+
+    create_time = models.DateTimeField(auto_now_add=True)
+    dispatch_time = models.DateTimeField(null=True, blank=True)
+    addresses: models.Manager["BatchAddress"]
+    attachments: models.Manager["BatchEmailAttachment"]
+    records: models.Manager["EmailRecord"]
+
+    def __str__(self):
+        return f"pk: {self.pk} subject: {self.subject} dispatch_time: {self.dispatch_time}"
+
+
+class BatchAddress(models.Model):  # または Recipient, EmailRecipient
+    batch_email = models.ForeignKey(BatchEmail, on_delete=models.CASCADE, related_name="addresses")
+    type = models.CharField(
+        max_length=16,
+        choices=AddressType.choices,
+        default=AddressType.TO,
+    )
+    address = models.EmailField(max_length=254)
+    name = models.CharField(max_length=128, blank=True)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.get_type_display()}: {self.name or self.address}"
+
+
+class BatchEmailAttachment(models.Model):
+    batch_email = models.ForeignKey(BatchEmail, on_delete=models.CASCADE, related_name="attachments")
+    file_name = models.CharField(max_length=256)
+    file_url = models.URLField()
+    file_type = models.CharField(max_length=128)
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.file_name
+
+
+class EmailRecord(models.Model):
+    batch_email = models.ForeignKey(BatchEmail, related_name="records", on_delete=models.CASCADE)
+
+    status = models.CharField(
+        max_length=32,
+        choices=EmailStatus.choices,
+        default=EmailStatus.PENDING,
+    )
+    attempt_count = models.IntegerField(default=0, validators=[MinValueValidator(0)])
+    create_time = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.status} ({self.create_time})"
+
+
+class CurrentEmailStatus(models.Model):
+    email_record = models.OneToOneField(EmailRecord, on_delete=models.CASCADE, related_name="current_status")
+    batch_email = models.OneToOneField(BatchEmail, on_delete=models.CASCADE, related_name="current_status")
+
+    updated_time = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"mail_pk: {self.batch_email.pk} and status: ({self.email_record.status})"
+
+
+
+// admin.py
+================================================================================
+# from django.contrib import admin
+from django.contrib import admin
+
+from .models import BatchAddress, BatchEmail, CurrentEmailStatus, EmailRecord
+
+admin.site.register(BatchEmail)
+admin.site.register(EmailRecord)
+admin.site.register(BatchAddress)
+admin.site.register(CurrentEmailStatus)
+# Register your models here.
+
+
+
+// mail_backends.py
+================================================================================
+# myapp/mail_backends.py
+
+import logging
+
+from django.conf import settings
+from django.core.mail.backends.smtp import EmailBackend as SmtpEmailBackend
+from django.utils.html import escape
+
+logger = logging.getLogger("iamfax")  # 既存のロガーを使う場合
+
+
+class StagingRedirectEmailBackend(SmtpEmailBackend):
+    """Staging環境用メールバックエンド。
+    全てのメールを指定されたアドレス(settings.STAGING_EMAIL_REDIRECT_RECIPIENTS)にリダイレクトする。
+    元の宛先情報はメール本文の先頭に追加される。
+    実際の送信にはsettingsのEMAIL_HOST等のSMTP設定を使用する。
+    """
+
+    def __init__(self, *args, **kwargs):
+        # ★★★ 初期化時にログ出力 ★★★
+        logger.info("✅ StagingRedirectEmailBackend initialized!")
+        super().__init__(*args, **kwargs)
+
+    def send_messages(self, email_messages):
+        # リダイレクト先が設定されていなければ警告し、通常のSMTP送信を試みる
+        logger.info(f"🚀 StagingRedirectEmailBackend: send_messages called with {len(email_messages)} messages.")
+        redirect_recipients = getattr(settings, "STAGING_EMAIL_REDIRECT_RECIPIENTS", None)
+
+        if not redirect_recipients:
+            logger.warning(
+                "STAGING_EMAIL_REDIRECT_RECIPIENTS is not defined or empty in settings. "
+                "Falling back to standard SMTP sending (potentially to original recipients)."
+            )
+            # ここでエラーにするか、そのまま送信するかはポリシーによる
+            return 0  # 送信失敗として扱う場合
+            # return super().send_messages(email_messages)  # 通常通り送信試行
+
+        modified_messages = []
+        for message in email_messages:
+            original_to = ", ".join(message.to)
+            original_cc = ", ".join(message.cc)
+            original_bcc = ", ".join(message.bcc)
+
+            # --- ヘッダー作成 ---
+            text_header = (
+                f"--- [Staging Email] Original Recipients ---\n"
+                f"To: {original_to}\n"
+                f"Cc: {original_cc}\n"
+                f"Bcc: {original_bcc}\n"
+                f"Environment: Staging\n"  # 環境情報を追加しても良い
+                f"-------------------------------------------\n\n"
+            )
+            html_header = (
+                f'<div style="background-color:#f0f0f0; padding:10px; margin-bottom:15px; border:1px solid #ccc; font-family: sans-serif; font-size: small;">'
+                f"<strong>--- [Staging Email] Original Recipients ---</strong><br>"
+                f"<strong>To:</strong> {escape(original_to)}<br>"
+                f"<strong>Cc:</strong> {escape(original_cc)}<br>"
+                f"<strong>Bcc:</strong> {escape(original_bcc)}<br>"
+                f"<strong>Environment:</strong> Staging<br>"
+                f"-------------------------------------------</div>"
+            )
+
+            # --- 本文にヘッダーを追加 ---
+            # プレーンテキスト
+            message.body = text_header + message.body
+
+            # HTML代替コンテンツ (EmailMultiAlternatives を使っているのでこちらが主)
+            if hasattr(message, "alternatives") and message.alternatives:
+                updated_alternatives = []
+                for content, mimetype in message.alternatives:
+                    if mimetype == "text/html":
+                        updated_alternatives.append((html_header + content, mimetype))
+                    else:
+                        updated_alternatives.append((content, mimetype))
+                message.alternatives = updated_alternatives
+            elif message.content_subtype == "html":  # フォールバック
+                message.body = html_header + message.body
+
+            # --- 宛先をリダイレクト先で上書き ---
+            message.to = list(redirect_recipients)  # list であることを保証
+            message.cc = []
+            message.bcc = []
+
+            modified_messages.append(message)
+
+        # 親クラス(SmtpEmailBackend)の send_messages を呼び出して実際に送信
+        # SmtpEmailBackend は settings.EMAIL_HOST 等の設定を利用する
+        if not modified_messages:
+            return 0
+        return super().send_messages(modified_messages)
+
+
+
+// tests.py
+================================================================================
+from django.test import TestCase
+
+# Create your tests here.
+
+
+
+// views.py
+================================================================================
+from django.shortcuts import render
+
+# Create your views here.
+
+
+
+// __init__.py
+================================================================================
+
+
+
+// apps.py
+================================================================================
+from django.apps import AppConfig
+
+
+class MailerConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'mailer'
+
+
+
+// output.py
+================================================================================
+import os
+
+def print_ts_files(base_dir="."):
+    target_exts = (".py")
+
+    for root, dirs, files in os.walk(base_dir):
+        # node_modules と .next を無視
+        for ignore_dir in ["node_modules", ".next", ".venv", "models_refrence"]:
+            if ignore_dir in dirs:
+                dirs.remove(ignore_dir)
+
+        for file in files:
+
+            if file.startswith( "test_" ):
+
+                continue
+
+            if file.endswith(target_exts) and not file.endswith(".d.ts"):  # 型定義ファイルは除外
+
+                file_path = os.path.join(root, file)
+                rel_path = os.path.relpath(file_path, base_dir)
+                print(f"// {rel_path}")
+                print("=" * 80)
+                with open(file_path, "r", encoding="utf-8") as f:
+                    print(f.read())
+                print("\n")
+
+if __name__ == "__main__":
+    print_ts_files(".")
+
+
+
+// utils.py
+================================================================================
+# mailer/utils.py
+import logging
+import os
+from dataclasses import dataclass
+from email.message import EmailMessage as RawEmailMessage
+from email.utils import formataddr
+from typing import List, Optional
+
+import boto3
+from django.conf import settings
+from django.core.files.storage import default_storage
+from django.core.mail import EmailMultiAlternatives
+from django.utils.html import strip_tags
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MailManAttachmentFile:
+    url: str
+    filename: str
+    filetype: str
+
+
+@dataclass
+class MailManAddress:
+    email: str
+    name: Optional[str] = None
+
+
+# settings.pyで明示的にUSE_RAW_SES=Trueとしない限りはDjango標準を使う安全な設計
+USE_DJANGO_EMAIL = getattr(settings, "USE_DJANGO_EMAIL", True)
+
+
+class MailMan:
+    def __init__(
+        self,
+        from_address: MailManAddress,
+        to_addresses: List[MailManAddress],
+        subject: str,
+        body_html: str,
+        body_text: Optional[str] = None,
+        attachments: List[MailManAttachmentFile] = None,
+        replyto_addresses: List[MailManAddress] = None,
+        cc_addresses: List[MailManAddress] = None,
+        bcc_addresses: List[MailManAddress] = None,
+    ):
+        self.from_address = from_address
+        self.to_addresses = to_addresses or []
+        self.bcc_addresses = bcc_addresses or []
+        self.cc_addresses = cc_addresses or []
+        self.replyto_addresses = replyto_addresses or []
+        self.subject = subject
+        self.attachments = attachments or []
+
+        if USE_DJANGO_EMAIL:
+            self.django_email = EmailMultiAlternatives(
+                subject=subject,
+                body=body_text if body_text else strip_tags(body_html),
+                alternatives=[(body_html, "text/html")],
+                from_email=self._format_single_address(from_address),
+                to=self._format_address(self.to_addresses),
+                cc=self._format_address(self.cc_addresses),
+                bcc=self._format_address(self.bcc_addresses),
+                reply_to=self._format_address(self.replyto_addresses),
+            )
+            if self.attachments:
+                self._add_attachment(self.attachments)
+        else:
+            self.raw_email = RawEmailMessage()
+            self.raw_email["Subject"] = subject
+            self.raw_email["From"] = self._format_single_address(from_address)
+            self.raw_email["To"] = self._format_address(self.to_addresses)
+
+            if self.cc_addresses:
+                self.raw_email["Cc"] = self._format_address(self.cc_addresses)
+            if self.bcc_addresses:
+                self.raw_email["Bcc"] = self._format_address(self.bcc_addresses)
+            if self.replyto_addresses:
+                self.raw_email["Reply-To"] = self._format_address(
+                    self.replyto_addresses
+                )
+
+            if body_text:
+                self.raw_email.set_content(body_text, subtype="plain")
+                self.raw_email.add_alternative(body_html, subtype="html")
+            else:
+                self.raw_email.set_content(body_html, subtype="html")
+
+            if self.attachments:
+                self._add_attachment(self.attachments)
+
+    @staticmethod
+    def _format_address(addresses: List[MailManAddress]) -> List[str]:
+        if not addresses:
+            return []
+        return [MailMan._format_single_address(addr) for addr in addresses]
+
+    @staticmethod
+    def _format_single_address(address: MailManAddress) -> str:
+        if address.name:
+            return formataddr((address.name, address.email))
+        return address.email
+
+    def _add_attachment(self, attachments: List[MailManAttachmentFile]) -> None:
+        for attachment in attachments:
+            path, name, mimetype = (
+                attachment.url,
+                attachment.filename,
+                attachment.filetype,
+            )
+            with default_storage.open(path, "rb") as saved_file:
+                file_content = saved_file.read()
+                main_type, sub_type = mimetype.split("/", 1)
+
+                if USE_DJANGO_EMAIL:
+                    self.django_email.attach(
+                        filename=os.path.basename(name),
+                        content=file_content,
+                        mimetype=mimetype,
+                    )
+                else:
+                    self.raw_email.add_attachment(
+                        file_content,
+                        maintype=main_type,
+                        subtype=sub_type,
+                        filename=os.path.basename(name),
+                    )
+
+    def send(self) -> int:
+        if not self.to_addresses and not self.bcc_addresses and not self.cc_addresses:
+            logger.error("No recipients specified")
+            return -1
+
+        if USE_DJANGO_EMAIL:
+            try:
+                # 成功した場合は送信したメッセージの数(1)が返る
+                return self.django_email.send()
+            except Exception as e:
+                logger.exception("Failed to send email via Django backend")
+                return -1
+        else:
+            logger.info("Connecting to SES via boto3...")
+            ses_client = boto3.client(
+                "ses",
+                aws_access_key_id=settings.AWS_SES_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SES_SECRET_ACCESS_KEY,
+                region_name=settings.AWS_SES_REGION_NAME,
+            )
+
+            try:
+                response = ses_client.send_raw_email(
+                    Source=self.from_address.email,
+                    Destinations=list(
+                        set(
+                            [addr.email for addr in self.to_addresses]
+                            + [addr.email for addr in self.bcc_addresses]
+                            + [addr.email for addr in self.cc_addresses]
+                        )
+                    ),
+                    RawMessage={"Data": self.raw_email.as_bytes()},
+                )
+                logger.info(f"Email sent via SES! Message ID: {response['MessageId']}")
+                return 1
+            except Exception as e:
+                logger.exception("Failed to send email via Boto3 SES")
+                return -1
+
+
+
+// management/__init__.py
+================================================================================
+
+
+
+// management/commands/send_mail.py
+================================================================================
+import random
+
+from webapps.models import JobCurrentState, State
+from webapps.utils.email_utils import MailMan, MailManAddress
+from webapps.utils.model_utils import update_job_state
+
+from django.core.mail import EmailMessage  # , send_mail
+from django.core.management.base import BaseCommand
+
+
+class Command(BaseCommand):
+    def handle(self, *args, **kwargs):
+        # send_fax_failure_mail(MyUser.objects.get(pk=1), "0422222222", 4, "残高不足")
+
+        for job_current_state in JobCurrentState.objects.filter(job_state__name=State.SENDING):
+            job = job_current_state.job
+
+            update_job_state(job, State.DISPATCHED, message="manually created")
+
+        # send_fax_success_mail(
+        #     MyUser.objects.get(pk=1), "0422222222", 4, "fax/root/imfax/pdf/2025/1/2025_01_06_15_58_08_101079.pdf"
+        # )
+
+        # html_content = render_to_string("emails/welcome_email.html", {"user": MyUser.objects.get(pk=1)})
+        # bmail = BatchEmail.objects.create(subject=f"test {uuid.uuid4().hex}", content_html=html_content)
+        # bmail.addresses.create(type=AddressType.TO, address="todoroki@octopt.com", name="Todoroki")
+        # bmail.addresses.create(type=AddressType.FROM, address="support@iamfax.com", name="support")
+        # print(BatchEmail.objects.filter(records__isnull=True))
+
+        return
+        if True:
+            MailMan(
+                from_address=MailManAddress("support@iamfax.com", "iamfax support team"),
+                to_addresses=[
+                    MailManAddress("todoroki@octopt.com", "Todoroki"),
+                    MailManAddress("yasu.todo+foo@gmail.com", "foo"),
+                ],
+                cc_addresses=[
+                    MailManAddress("yasu.todo+cc1@gmail.com", "cc test 1"),
+                    MailManAddress("yasu.todo+cc2@gmail.com", "cc test 2"),
+                ],
+                bcc_addresses=[
+                    MailManAddress("yasu.todo+bcc1@gmail.com", "bcc test1"),
+                    MailManAddress("yasu.todo+bcc1@gmail.com", "bcc test2"),
+                ],
+                replyto_addresses=[MailManAddress("yasu.todo@gmail.com", "reply me")],
+                subject="django with ses test " + str(random.randint(1, 10000)),
+                body_html="<h1>hello</h1><br><p>This is a test email</p>",
+            ).send()
+        else:
+            print("hello")
+            # send_mail(
+            #     "Subject here",
+            #     "Here is the message.",
+            #     "support@iamfax.com",
+            #     ["yasu.todo@gmail.com", "todoroki@octopt.com"],
+            #     fail_silently=False,
+            # )
+
+            email = EmailMessage(
+                subject="Subject here",
+                body="Here is the message.",
+                from_email="support@iamfax.com",
+                to=["todoroki@octopt.com"],
+                bcc="yasu.todo@gmail.com6, yasu.todo+bcc1@gmail.com",
+            )
+
+            path = "fax/root/imfax/pdf/2025/1/2025_01_06_15_58_08_101079.pdf"
+            mimetype = "application/pdf"
+            filename = "foobar.pdf"
+
+            # with default_storage.open(path, "rb") as saved_file:
+            #     file_content = saved_file.read()
+            #     email.attach(filename=filename, content=file_content, mimetype=mimetype)
+            #     email.send()
+
+            pass
+
+
+
+// management/commands/BatchEmail.py
+================================================================================
+# import logging
+import logging
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+
+# from email.header import Header
+from time import sleep
+from typing import List
+from zoneinfo import ZoneInfo
+
+from django.core.management.base import BaseCommand
+from django.db import connection, transaction
+from django.db.models import Q
+from mailer.models import AddressType, BatchEmail, CurrentEmailStatus, EmailStatus
+from mailer.utils import MailMan, MailManAddress, MailManAttachmentFile
+
+# MAXIMUM_SEND_MESSAGES_PER_SECOND = 5
+
+logger = logging.getLogger("iamfax")
+
+
+def update_email_state(batch_email: BatchEmail, status: str) -> None:
+    logger.info(f"Updating email {batch_email.id} state to {status}")
+
+    with transaction.atomic():
+        record = batch_email.records.create(status=status)
+        CurrentEmailStatus.objects.update_or_create(
+            batch_email=batch_email, defaults={"email_record": record}
+        )
+
+
+def send_email(batch_email: BatchEmail):
+    """メールを送信し、送信結果をデータベースに記録する。"""
+    try:
+        # メール内容の準備
+        cc: List[MailManAddress] = []
+        bcc: List[MailManAddress] = []
+        to: List[MailManAddress] = []
+        reply_to: List[MailManAddress] = []  # Optional[MailManAddress] = None
+        _from: MailManAddress | None = None
+
+        for address in batch_email.addresses.all():
+            if address.type == AddressType.TO:
+                to.append(MailManAddress(email=address.address, name=address.name))
+            elif address.type == AddressType.CC:
+                cc.append(MailManAddress(address.address, address.name))
+            elif address.type == AddressType.BCC:
+                bcc.append(MailManAddress(address.address, address.name))
+            elif address.type == AddressType.REPLY_TO:
+                reply_to.append(MailManAddress(address.address, address.name))
+            elif address.type == AddressType.FROM:
+                _from = MailManAddress(address.address, address.name)
+
+        if _from and to:
+            # メール送信
+            attachments: List[MailManAttachmentFile] = []
+            for attachment in batch_email.attachments.all():
+                attachments.append(
+                    MailManAttachmentFile(
+                        url=attachment.file_url,
+                        filename=attachment.file_name,
+                        filetype=attachment.file_type,
+                    )
+                )
+
+            email = MailMan(
+                from_address=_from,
+                to_addresses=to,
+                subject=batch_email.subject,
+                body_html=batch_email.content_html,
+                body_text=batch_email.content_text,
+                cc_addresses=cc,
+                bcc_addresses=bcc,
+                replyto_addresses=reply_to,
+                attachments=attachments,
+            )
+            response = email.send()
+
+            if response == -1:
+                update_email_state(batch_email, EmailStatus.FAILED)
+
+            else:
+                update_email_state(batch_email, EmailStatus.SENT)
+
+            # batch_email.save()
+            return f"Email sent to {to}: {response}"
+        else:
+            logger.error(f"Failed to send email to {to}")
+    except Exception as e:
+        logger.exception("Failed to send email")
+        return f"Failed to send email to {to}: {e}"
+
+
+MAXIMUM_SEND_MESSAGES_PER_SECOND = 10  # SESの制限 14だが、10とする
+DAILY_SEND_LIMIT = 50000
+SLEEPING = 30  # メールがない場合のスリープ秒数
+
+
+class Command(BaseCommand):
+    def handle(self, *args, **kwargs) -> None:
+        def is_ready_to_dispatch(batch_email: BatchEmail) -> bool:
+            batch_email.dispatch_time
+            return (
+                batch_email.dispatch_time is None
+                or batch_email.dispatch_time < datetime.now(jst)
+            )
+
+        # 1日の送信数を管理
+        total_emails_sent_today = 0
+        jst = ZoneInfo("Asia/Tokyo")  # タイムゾーン情報を取得
+        last_reset_time = datetime.now(jst)
+
+        while True:
+            # DBコネクションをリセット（必要に応じて）
+            try:
+                # 日次送信数をリセット（UTC 0時基準）
+                if (datetime.now(jst) - last_reset_time) > timedelta(days=1):
+                    total_emails_sent_today = 0
+                    last_reset_time = datetime.now(jst)
+                    logger.info("Reset daily email send counter.")
+
+                logger.debug("Reconnecting to DB...")
+                connection.close()
+                mails: List[BatchEmail] = []
+
+                for mail_status in CurrentEmailStatus.objects.filter(
+                    Q(email_record__status=EmailStatus.PENDING)
+                    | Q(email_record__status=EmailStatus.RETRY)
+                ):
+                    batch_email = mail_status.batch_email
+                    if batch_email and is_ready_to_dispatch(batch_email):
+                        mails.append(batch_email)
+                for batch_email in BatchEmail.objects.filter(records__isnull=True):
+                    update_email_state(batch_email, EmailStatus.PENDING)
+
+                    if is_ready_to_dispatch(batch_email):
+                        mails.append(batch_email)
+
+                with ThreadPoolExecutor(
+                    max_workers=MAXIMUM_SEND_MESSAGES_PER_SECOND
+                ) as executor:
+                    for i in range(0, len(mails), MAXIMUM_SEND_MESSAGES_PER_SECOND):
+                        if total_emails_sent_today >= DAILY_SEND_LIMIT:
+                            logger.warning(
+                                "Daily send limit reached. Pausing until reset."
+                            )
+                            sleep(SLEEPING)
+                            break
+                        batch = mails[i : i + MAXIMUM_SEND_MESSAGES_PER_SECOND]
+                        results = list(executor.map(send_email, batch))
+                        total_emails_sent_today += len(results)
+                        for result in results:
+                            logger.debug(result)
+                        sleep(1)  # 秒間送信制限を守る
+
+                sleep(9)  # 次のバッチまで少し待機
+
+                if not mails:
+                    logger.debug(
+                        f"No emails to send. Sleeping for {SLEEPING} seconds..."
+                    )
+                    sleep(SLEEPING)
+
+            except Exception as e:
+                logger.exception(f"An error occurred: {e}")
+                sleep(SLEEPING)  # エラーが発生しても少し待機して再開
+
+
+
+// migrations/__init__.py
+================================================================================
+
+
+

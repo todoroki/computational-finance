@@ -1,0 +1,23 @@
+.
+├── __init__.py
+├── __pycache__
+├── admin.py
+├── apps.py
+├── mail_backends.py
+├── management
+│   ├── __init__.py
+│   ├── __pycache__
+│   └── commands
+│       ├── BatchEmail.py
+│       ├── __pycache__
+│       └── send_mail.py
+├── migrations
+│   └── __init__.py
+├── models.py
+├── output.py
+├── source.txt
+├── tests.py
+├── tree.txt
+└── views.py
+
+7 directories, 14 files

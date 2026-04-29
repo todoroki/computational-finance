@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     # --- 自作アプリ ---
     "stocks",
     "users",
+    "mailer",
 ]
 
 AUTH_USER_MODEL = "users.User"  # これが最重要
@@ -71,7 +72,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],  # ← 空リスト [] から変更！
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -140,3 +141,25 @@ TIME_ZONE = "Asia/Tokyo"  # JST
 USE_I18N = True
 
 USE_TZ = True
+
+
+# ==========================================
+# メール送信設定 (AWS SES / MailMan用)
+# ==========================================
+# TrueならDjango標準(ローカルでコンソール出力)、Falseならboto3でSESから直接送信
+USE_DJANGO_EMAIL = os.environ.get("USE_DJANGO_EMAIL", "True") == "True"
+
+if USE_DJANGO_EMAIL:
+    # 開発用：メールを送信せずにターミナルに表示する
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# SMTP用の設定（EMAIL_HOSTなど）は使わないので削除しました。
+# 代わりにMailMan(boto3)が使うSES用の認証情報を読み込みます。
+AWS_SES_ACCESS_KEY_ID = os.environ.get("AWS_SES_ACCESS_KEY_ID")
+AWS_SES_SECRET_ACCESS_KEY = os.environ.get("AWS_SES_SECRET_KEY_ID")
+AWS_SES_REGION_NAME = os.environ.get("AWS_SES_REGION", "ap-northeast-1")
+
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "support@stockmri.com")
+
+# (必要であれば) staging環境で特定のアドレス以外にメールを飛ばさない設定
+STAGING_EMAIL_REDIRECT_RECIPIENTS = os.environ.get("STAGING_EMAIL_REDIRECT_RECIPIENTS", "").split(",")
