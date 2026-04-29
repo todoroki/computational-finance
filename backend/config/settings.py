@@ -84,6 +84,40 @@ TEMPLATES = [
     },
 ]
 
+# ==========================================
+# ロギング設定
+# ==========================================
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        # ターミナルで見やすいシンプルなフォーマット
+        "console": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "console",
+        },
+    },
+    "loggers": {
+        # "mailer" アプリからのログを拾う
+        "mailer": {
+            "handlers": ["console"],
+            "level": "DEBUG" if DEBUG else "INFO",
+            "propagate": False,
+        },
+        # プロジェクト全体（stocksやusersなど）のデフォルト
+        "": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+    },
+}
+
 WSGI_APPLICATION = "config.wsgi.application"
 
 
@@ -162,4 +196,6 @@ AWS_SES_REGION_NAME = os.environ.get("AWS_SES_REGION", "ap-northeast-1")
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "support@stockmri.com")
 
 # (必要であれば) staging環境で特定のアドレス以外にメールを飛ばさない設定
-STAGING_EMAIL_REDIRECT_RECIPIENTS = os.environ.get("STAGING_EMAIL_REDIRECT_RECIPIENTS", "").split(",")
+STAGING_EMAIL_REDIRECT_RECIPIENTS = os.environ.get(
+    "STAGING_EMAIL_REDIRECT_RECIPIENTS", ""
+).split(",")

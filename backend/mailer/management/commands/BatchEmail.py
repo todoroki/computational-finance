@@ -16,7 +16,8 @@ from mailer.utils import MailMan, MailManAddress, MailManAttachmentFile
 
 # MAXIMUM_SEND_MESSAGES_PER_SECOND = 5
 
-logger = logging.getLogger("iamfax")
+
+logger = logging.getLogger(__name__)
 
 
 def update_email_state(batch_email: BatchEmail, status: str) -> None:
